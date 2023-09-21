@@ -28,12 +28,16 @@ data2 = pd.read_csv(f2)
 
 ratio = data1/data2
 
+print(ratio)
+
 ratio_mean = ratio.mean()
 ratio_error = [np.std(ratio[column]) for column in ratio.columns]
 
+print(ratio_mean)
+
 width=0.2
 
-plt.figure(figsize=(18, 10))
+plt.figure(figsize=(12, 10))
 
 x = np.arange(len(ratio.columns))
 #Draw grid below other figures
@@ -42,7 +46,9 @@ plt.grid(True, axis='y', color='black', linestyle='dotted')
 #Plot the data in a bar chart
 plt.errorbar(x=x, y=ratio_mean, yerr=ratio_error, linewidth=0, marker="s", elinewidth=1, label="Ratio")
 plt.xticks(x, ratio.columns)
+plt.xticks(rotation=90)
 plt.ylabel(y_label)
+plt.ylim([0,2])
 plt.legend()
 
 #plt.show()

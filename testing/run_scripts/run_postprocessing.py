@@ -28,7 +28,7 @@ def run_postprocessing(config, test_id):
             run_command = ["python3", 
                         postprocessing_scripts_dir + process["executable"], 
                         postprocessing_dir + process["output_file"],
-                        process["arguments"],
+                        *process["arguments"],
                         *[results_dir + i + 
                         ".csv" for i in [j["output_file"] for j in test["runs"]]]]
         else:

@@ -127,6 +127,7 @@
 /example17/event/verbose 2
 
 /example17/gun/setDefault
+/gun/direction $direction
 /gun/particle $particle_type
 /gun/energy $gun_energy
 /gun/number $num_particles

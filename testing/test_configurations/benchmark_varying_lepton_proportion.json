@@ -28,7 +28,7 @@
             [
                 {
                     "output_file" : "example17_adept_proportions_1000_10GeV_16t_32evt",
-                    "arguments" : "postprocessing_scripts/percentage_labels",
+                    "arguments" : ["postprocessing_scripts/percentage_labels", "1"],
                     "executable" : "transform_univariate_test_data.py"
                 }
             ],
@@ -50,6 +50,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -88,6 +89,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -126,6 +128,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -164,6 +167,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -202,6 +206,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -240,6 +245,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -283,7 +289,7 @@
             [
                 {
                     "output_file" : "example17_geant4_proportions_1000_10GeV_16t_32evt",
-                    "arguments" : "postprocessing_scripts/percentage_labels",
+                    "arguments" : ["postprocessing_scripts/percentage_labels", "1"],
                     "executable" : "transform_univariate_test_data.py"
                 }
             ],
@@ -305,6 +311,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -343,6 +350,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -381,6 +389,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -419,6 +428,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -457,6 +467,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,
@@ -495,6 +506,7 @@
                         "adept_million_track_slots" : 10,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",
                         "num_particles" : 1000,
                         "randomize_gun" : true,

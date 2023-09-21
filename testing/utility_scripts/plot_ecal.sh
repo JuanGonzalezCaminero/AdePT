@@ -1,0 +1,1 @@
+python3 ../plotting_scripts/plot_lines.py ../benchmark_plots/ECAL_Proportion "Threads" "Proportion of time spent in ECAL" ../benchmark_postprocessing/AdePT_ECAL ../benchmark_postprocessing/Geant4_ECAL

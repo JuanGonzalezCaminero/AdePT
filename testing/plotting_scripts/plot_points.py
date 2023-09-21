@@ -23,14 +23,14 @@ colors = prop_cycle.by_key()['color']
 
 width=0.2
 
-plt.figure(figsize=(18, 10))
+plt.figure(figsize=(12, 10))
 
 for i in range(len(data_files)):
 	file = data_files[i]
 	data = pd.read_csv(file)
 
 	#Sort the columns in ascending order
-	data = data.reindex(data.mean().sort_values().index, axis=1)
+	#data = data.reindex(data.mean().sort_values().index, axis=1)
 	
 	#Get the mean of each timing
 	means = data.mean()
@@ -44,8 +44,10 @@ for i in range(len(data_files)):
 	plt.grid(True, axis='y', color='black', linestyle='dotted')
 	
 	#Plot the data
-	plt.errorbar(x=x+((i-len(sys.argv[1:])//2)*width), y=means, yerr=errors, label=file, linewidth=0, marker="s", elinewidth=1)
+	plt.errorbar(x=x+((i-len(sys.argv[1:])//2)*width), y=means, yerr=errors, label=file[file.rindex("/")+1:], linewidth=0, marker="s", elinewidth=1)
+	plt.yscale('log')
 	plt.xticks(x, data.columns)
+	plt.xticks(rotation=90)
 	plt.ylabel(y_label)
 	plt.legend()
 

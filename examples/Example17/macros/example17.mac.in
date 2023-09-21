@@ -136,7 +136,7 @@
 /example17/gun/print true
 
 #If false, the following parameters are ignored
-/example17/gun/randomizeGun true
+/example17/gun/randomizeGun false
 #Usage: /example17/gun/addParticle type ["weight" weight] ["energy" energy unit]
 /example17/gun/addParticle e- weight 1 energy 10 GeV
 /example17/gun/addParticle proton weight 0 energy 10 GeV

@@ -222,6 +222,7 @@ void PrimaryGeneratorAction::Print() const
 
 void PrimaryGeneratorAction::PrintPrimaries(G4Event* aEvent) const
 {
+  /*
   std::map<G4String, G4int> aParticleCounts = {};
   std::map<G4String, G4double> aParticleAverageEnergies = {};
 
@@ -242,4 +243,5 @@ void PrimaryGeneratorAction::PrintPrimaries(G4Event* aEvent) const
   {
     G4cout << pd.first << ": " << pd.second << ", " << aParticleAverageEnergies[pd.first]/pd.second << G4endl;
   }
+  */
 }

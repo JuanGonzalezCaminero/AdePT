@@ -1,0 +1,4 @@
+python3 ../postprocessing_scripts/postprocessing_ecal_multirun.py ../benchmark_postprocessing/Geant4_ECAL ../postprocessing_scripts/thread_labels 0 ../scaling_multirun_final/ example17_geant4_100e_1000_1t.csv example17_geant4_100e_1000_2t.csv example17_geant4_100e_1000_4t.csv example17_geant4_100e_1000_8t.csv example17_geant4_100e_1000_16t.csv
+python3 ../postprocessing_scripts/postprocessing_ecal_multirun.py ../benchmark_postprocessing/AdePT_ECAL ../postprocessing_scripts/thread_labels 0 ../scaling_multirun_final/ example17_adept_100e_1000_1t.csv example17_adept_100e_1000_2t.csv example17_adept_100e_1000_4t.csv example17_adept_100e_1000_8t.csv example17_adept_100e_1000_16t.csv
+mv ../benchmark_postprocessing/Geant4_ECAL.csv ../benchmark_postprocessing/Geant4_ECAL
+mv ../benchmark_postprocessing/AdePT_ECAL.csv ../benchmark_postprocessing/AdePT_ECAL

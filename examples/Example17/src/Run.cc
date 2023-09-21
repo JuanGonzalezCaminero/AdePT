@@ -110,5 +110,11 @@ void Run::EndOfRunSummary(G4String aOutputDirectory, G4String aOutputFilename,
       aOutputTestManager.reset();
     }
   }
+  aOutputTestManager.setAccumulator("Total", fTestManager->getDurationSeconds(timers::TOTAL));
+  aOutputTestManager.setOutputDirectory(aOutputDirectory);
+  aOutputTestManager.setOutputFilename(aOutputFilename+"_totaltime");
+  aOutputTestManager.exportCSV();
+  aOutputTestManager.reset();
+
   TestManagerStore<int>::GetInstance()->Reset();
 }

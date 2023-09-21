@@ -176,6 +176,7 @@ Usage example:
                         // Type of particle to shoot
                         "particle_type" : "e-", 
                         // Energy of the particles
+                        "direction" : "1 1 1",
                         "gun_energy" : "10 GeV",  
                         // Number of particles to shoot
                         "num_particles" : 2000, 

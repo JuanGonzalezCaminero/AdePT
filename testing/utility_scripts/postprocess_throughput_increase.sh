@@ -1,0 +1,2 @@
+python3 ../postprocessing_scripts/postprocessing_throughput_increase_multirun.py ../benchmark_postprocessing/Throughput_Increase ../postprocessing_scripts/thread_labels 0 ../scaling_multirun_final/ 16000 example17_\${model}_100e_1000_1t_totaltime.csv example17_\${model}_100e_1000_2t_totaltime.csv example17_\${model}_100e_1000_4t_totaltime.csv example17_\${model}_100e_1000_8t_totaltime.csv example17_\${model}_100e_1000_16t_totaltime.csv
+mv ../benchmark_postprocessing/Throughput_Increase.csv ../benchmark_postprocessing/Throughput_Increase

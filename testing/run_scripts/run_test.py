@@ -9,11 +9,13 @@ import os
 from make_plots import *
 from run_postprocessing import *
 
-if len(sys.argv) < 2:
-    print("Usage: python3 run_test.py configuration_file [configuration_file_2 ...]")
+if len(sys.argv) < 3:
+    print("Usage: python3 run_test.py random_seed_override configuration_file [configuration_file_2 ...]")
     exit()
 
-for config_filename in sys.argv[1:]:
+random_seed_override = int(sys.argv[1])
+
+for config_filename in sys.argv[2:]:
     try:
         config_file = open(config_filename)
     except:
@@ -55,6 +57,10 @@ for config_filename in sys.argv[1:]:
                 run["configuration"]["use_adept"] = "/param/ActivateModel AdePT"
             else:
                 run["configuration"]["use_adept"] = "/param/InActivateModel AdePT"
+            
+            #If the argument is >=0, override the random seed for all runs with the specified one
+            if random_seed_override >= 0:
+                run["configuration"]["random_seed"] = random_seed_override
 
             #If using the random gun, add lines for each particle and for the angles
             random_gun_configuration = ""
@@ -93,6 +99,9 @@ for config_filename in sys.argv[1:]:
             #If the output file already exists, overwrite it
             if os.path.exists(results_dir + "/" + run["output_file"] + ".csv"):
                 os.remove(results_dir + "/" + run["output_file"] + ".csv")
+            
+            #Force the appropriate split on G4
+            os.environ["G4FORCE_EVENTS_PER_TASK"] = str(int(run["configuration"]["num_events"]/run["configuration"]["num_threads"]))
 
             #Run the simulation
             completed_process = subprocess.run([bin_dir + run["executable"], 

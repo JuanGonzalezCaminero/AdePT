@@ -1,0 +1,1 @@
+python3 ../plotting_scripts/plot_lines.py ../benchmark_plots/Speedup "Threads" "Speedup" ../benchmark_postprocessing/ECAL_Speedup ../benchmark_postprocessing/NONEM_Speedup ../benchmark_postprocessing/Event_Speedup

@@ -1,0 +1,4 @@
+#/bin/sh
+python3 plotting_scripts/plot_univariate_test.py benchmark_plots/varying_leptons "% of e-" ""  benchmark_postprocessing/example17_geant4_proportions_1000_10GeV_16t_32evt.csv benchmark_postprocessing/example17_adept_proportions_1000_10GeV_16t_32evt.csv
+python3 plotting_scripts/plot_univariate_test.py benchmark_plots/varying_threads.png "Threads" "Speedup" benchmark_postprocessing/example17_geant4_threads_500_10GeV.csv benchmark_postprocessing/example17_adept_threads_500_10GeV.csv
+python3 plotting_scripts/plot_univariate_test.py benchmark_plots/varying_field.png "Field (Tesla)" "Speedup" benchmark_postprocessing/example17_geant4_field_500_10GeV_16t_16evt.csv benchmark_postprocessing/example17_adept_field_500_10GeV_16t_16evt.csv

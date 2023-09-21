@@ -5,13 +5,14 @@ import pandas as pd
 import numpy as np
 import sys
 
-if len(sys.argv) < 4:
-	print("Usage: python3 plot_proportions_test.py output_file x_labels_file [data.csv data_2.csv ...]")
+if len(sys.argv) < 5:
+	print("Usage: python3 plot_proportions_test.py output_file x_labels_file write_index [data.csv data_2.csv ...]")
 	exit()
 	
 output_file = sys.argv[1]
 x_labels_file = sys.argv[2]
-data_files = sys.argv[3:]
+write_index = bool(int(sys.argv[3]))
+data_files = sys.argv[4:]
 
 output = pd.DataFrame()
 #This has to follow the order in which the runs are defined in the configuration
@@ -19,8 +20,8 @@ x_labels = open(x_labels_file).read().strip().split(",")
 
 for i in range(len(data_files)):
     file = data_files[i]
-    data = pd.read_csv(file)
+    data = pd.read_csv(file, sep="\s*,\s*", engine='python')
     means = data.mean()
     output[x_labels[i]] = means
-
-output.to_csv(output_file + ".csv")
+    
+output.to_csv(output_file + ".csv", index=write_index)

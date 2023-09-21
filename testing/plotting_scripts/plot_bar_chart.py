@@ -32,7 +32,7 @@ for i in range(len(data_files)):
 	data = pd.read_csv(file)
 
 	#Sort the columns in ascending order
-	data = data.reindex(data.mean().sort_values().index, axis=1)
+	#data = data.reindex(data.mean().sort_values().index, axis=1)
 	
 	#Get the mean of each timing
 	means = data.mean()

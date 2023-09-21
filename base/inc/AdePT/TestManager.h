@@ -96,8 +96,8 @@ public:
     }
   }
 
-  /** @brief Empties the timer map */
-  void reset() { fTimers.clear(); }
+  /** @brief Empties the timer and accumulator maps */
+  void reset() { fTimers.clear(); fAccumulators.clear(); }
 
   /** @brief Removes a timer from the map */
   void removeTimer(TTag tag) { fTimers.erase(tag); }

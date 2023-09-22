@@ -37,7 +37,7 @@ print(ratio_mean)
 
 width=0.2
 
-plt.figure(figsize=(12, 10))
+plt.figure(figsize=(12, 3))
 
 x = np.arange(len(ratio.columns))
 #Draw grid below other figures
@@ -48,7 +48,7 @@ plt.errorbar(x=x, y=ratio_mean, yerr=ratio_error, linewidth=0, marker="s", eline
 plt.xticks(x, ratio.columns)
 plt.xticks(rotation=90)
 plt.ylabel(y_label)
-plt.ylim([0,2])
+plt.ylim([0.6,1.4])
 plt.legend()
 
 #plt.show()

@@ -8,6 +8,9 @@ import sys
 from cycler import cycler
 from matplotlib.offsetbox import AnchoredText
 
+custom_fontsize = 18
+hardware_limit = 8
+
 if len(sys.argv) < 5:
 	print("Usage: python3 plot_points.py output_file x_label y_label data.csv [data_2.csv data_3.csv ...]")
 	exit()
@@ -51,10 +54,11 @@ for i in range(len(data_files)):
 	ax.set_xticks(x, data.columns)
 	
 ax.set_ylim(bottom=0)
-ax.set_ylabel(y_label)
-ax.set_xlabel(x_label)
+ax.set_ylabel(y_label, fontsize=custom_fontsize)
+ax.set_xlabel(x_label, fontsize=custom_fontsize)
 #Plot a vertical dotted line to indicate the hardware limit (Hardcoded)
-ax.axvline(x=8, color='black', linestyle="dashed", linewidth=0.4, label="Hardware limit")
+ax.axvline(x=8, color='black', linestyle="dashed", linewidth=0.4)
+plt.text(hardware_limit + 0.2, 6,'Hardware Limit', rotation=90, fontsize=custom_fontsize-2)
 
 #Text box with the machine characteristics, geometry and gun configuration
 info_text = \
@@ -64,8 +68,10 @@ Gun composition:     $10^3$ e-, 10GeV\n\
 Test:                20 runs, 16 events/run\n\
 Geometry:            cms2018.gdml"
 
-ax.add_artist(AnchoredText(info_text, loc="lower right", prop={'family' : 'monospace'}))#, bbox=dict(boxstyle="square", facecolor="beige"), transform=ax.transAxes, horizontalalignment="right", verticalalignment="bottom")
+plt.rc("font", **{"size" : custom_fontsize})
 
+ax.add_artist(AnchoredText(info_text, loc="upper right", prop={'family' : 'monospace', 'fontsize' : 13}))#, bbox=dict(boxstyle="square", facecolor="beige"), transform=ax.transAxes, horizontalalignment="right", verticalalignment="bottom")
+#ax.legend(loc = (0.67, 0.6))
 ax.legend()
 
 #plt.show()

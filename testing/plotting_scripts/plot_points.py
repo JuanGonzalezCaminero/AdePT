@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 from cycler import cycler
+from matplotlib.offsetbox import AnchoredText
+
+custom_fontsize = 14
 
 if len(sys.argv) < 5:
 	print("Usage: python3 plot_points.py output_file x_label y_label data.csv [data_2.csv data_3.csv ...]")
@@ -48,8 +51,20 @@ for i in range(len(data_files)):
 	plt.yscale('log')
 	plt.xticks(x, data.columns)
 	plt.xticks(rotation=90)
-	plt.ylabel(y_label)
-	plt.legend()
+	plt.ylabel(y_label, fontsize=custom_fontsize)
+
+#Text box with the machine characteristics, geometry and gun configuration
+info_text = \
+"Gun parameters:      Theta 10-170°, Phi 0-360°\n\
+Gun composition:     $5*10^3$ e-, 10GeV\n\
+Test:                64 Events\n\
+Geometry:            cms2018.gdml\n\
+Field:               (0, 0, 3.8) Tesla"
+
+plt.gca().add_artist(AnchoredText(info_text, loc="lower left", prop={'family' : 'monospace', 'fontsize' : 13}))
+
+plt.rc("font", **{"size" : custom_fontsize})
+plt.legend()
 
 #plt.show()
 plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.5)

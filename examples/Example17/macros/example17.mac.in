@@ -19,9 +19,9 @@
 /example17/detector/regionname EcalRegion
 /example17/adept/verbose 0
 ## Threshold for buffering tracks before sending to GPU
-/example17/adept/threshold 200
+/example17/adept/threshold 2000
 ## Total number of GPU track slots (not per thread)
-/example17/adept/milliontrackslots 1
+/example17/adept/milliontrackslots 10
 
 /example17/detector/addsensitivevolume EAPD_01
 /example17/detector/addsensitivevolume EAPD_02
@@ -106,8 +106,8 @@
 ## -----------------------------------------------------------------------------
 ## Optionally, set a constant magnetic filed:
 ## -----------------------------------------------------------------------------
-/example17/detector/setField 0 0 0 tesla
-#/example17/detector/setField 0 0 3.8 tesla
+#/example17/detector/setField 0 0 0 tesla
+/example17/detector/setField 0 0 3.8 tesla
 
 ##
 ## -----------------------------------------------------------------------------
@@ -131,12 +131,12 @@
 /example17/gun/setDefault
 /gun/particle e-
 /gun/energy 10 GeV
-/gun/number 200
+/gun/number 1000
 /gun/position 0 0 0
 /example17/gun/print true
 
 #If false, the following parameters are ignored
-/example17/gun/randomizeGun false
+/example17/gun/randomizeGun true
 #Usage: /example17/gun/addParticle type ["weight" weight] ["energy" energy unit]
 /example17/gun/addParticle e- weight 1 energy 10 GeV
 /example17/gun/addParticle proton weight 0 energy 10 GeV

@@ -50,7 +50,7 @@ for i in range(len(data_files)):
 	ax.grid(True, axis='y', color='black', linestyle='dotted')
 	
 	#Plot the data
-	ax.errorbar(x=x, y=means, yerr=errors, label=file[file.rindex("/")+1:], linewidth=1, marker="o", markersize=4, elinewidth=1)
+	ax.errorbar(x=x, y=means, yerr=errors, label=file[file.rindex("/")+1:], linewidth=1, marker="o", markersize=6, elinewidth=1)
 	ax.set_xticks(x, data.columns)
 	
 ax.set_ylim(bottom=0)
@@ -71,7 +71,7 @@ Geometry:            cms2018.gdml"
 plt.rc("font", **{"size" : custom_fontsize})
 
 ax.add_artist(AnchoredText(info_text, loc="upper right", prop={'family' : 'monospace', 'fontsize' : 13}))#, bbox=dict(boxstyle="square", facecolor="beige"), transform=ax.transAxes, horizontalalignment="right", verticalalignment="bottom")
-#ax.legend(loc = (0.67, 0.6))
+#ax.legend(loc = (0.62, 0.6))
 ax.legend()
 
 #plt.show()

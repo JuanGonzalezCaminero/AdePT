@@ -22,6 +22,11 @@ BasicScoring *BasicScoring::InitializeOnGPU()
   COPCORE_CUDA_CHECK(cudaMalloc(&fEnergyDeposit_dev, sizeof(double) * fNumSensitive));
   COPCORE_CUDA_CHECK(cudaMemset(fEnergyDeposit_dev, 0, sizeof(double) * fNumSensitive));
 
+  G4cout << "DEBUG: Allocating pvol to hit on GPU" << G4endl;
+  // Allocate memory for the mapping of PVol to Hit
+  COPCORE_CUDA_CHECK(cudaMalloc(&fPvolToHit_dev, sizeof(int) * fNumPvol));
+  COPCORE_CUDA_CHECK(cudaMemset(fPvolToHit_dev, 0, sizeof(int) * fNumPvol));
+
   // Allocate and initialize scoring and statistics.
   COPCORE_CUDA_CHECK(cudaMalloc(&fGlobalScoring_dev, sizeof(GlobalScoring)));
   COPCORE_CUDA_CHECK(cudaMemset(fGlobalScoring_dev, 0, sizeof(GlobalScoring)));
@@ -36,6 +41,11 @@ BasicScoring *BasicScoring::InitializeOnGPU()
   BasicScoring *BasicScoring_dev = nullptr;
   COPCORE_CUDA_CHECK(cudaMalloc(&BasicScoring_dev, sizeof(BasicScoring)));
   COPCORE_CUDA_CHECK(cudaMemcpy(BasicScoring_dev, this, sizeof(BasicScoring), cudaMemcpyHostToDevice));
+
+  G4cout << "DEBUG: Copying pvol to hit to GPU" << G4endl;
+  // Copy the PVol to Hit mapping to the GPU
+  COPCORE_CUDA_CHECK(cudaMemcpy(fPvolToHit_dev, fPvolToHit, sizeof(int) * fNumPvol, cudaMemcpyHostToDevice));
+
   return BasicScoring_dev;
 }
 
@@ -76,12 +86,16 @@ __device__ void BasicScoring::Score(vecgeom::NavStateIndex const &crt_state, int
   int volumeID = volume->id();
   int charged  = abs(charge);
 
-  int lvolID = volume->GetLogicalVolume()->id();
+  //int lvolID = volume->GetLogicalVolume()->id();
 
   // Add to charged track length, global energy deposit and deposit per volume
-  atomicAdd(&fScoringPerVolume_dev->chargedTrackLength[volumeID], charged * geomStep);
+  // TODO: Add a conversion from volumeID to hitID, make chargedTrackLength and energyDeposit sizes equal 
+  // to the number of sensitive volumes
+  //atomicAdd(&fScoringPerVolume_dev->chargedTrackLength[volumeID], charged * geomStep);
+  atomicAdd(&fScoringPerVolume_dev->chargedTrackLength[fPvolToHit_dev[volumeID]], charged * geomStep);
   atomicAdd(&fGlobalScoring_dev->energyDeposit, edep);
-  atomicAdd(&fScoringPerVolume_dev->energyDeposit[volumeID], edep);
+  //atomicAdd(&fScoringPerVolume_dev->energyDeposit[volumeID], edep);
+  atomicAdd(&fScoringPerVolume_dev->energyDeposit[fPvolToHit_dev[volumeID]], edep);
 }
 
 __device__ void BasicScoring::AccountHit()

@@ -35,6 +35,7 @@
 #include "G4Event.hh"
 #include "G4EventManager.hh"
 #include "G4RunManager.hh"
+#include "G4PhysicalVolumeStore.hh"
 
 #include "G4GlobalFastSimulationManager.hh"
 #include "AdeptIntegration.h"
@@ -129,6 +130,61 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
   for (auto i = 0; i < ngroups; ++i)
     edep_groups[i] = 0;
 
+  // Accumulate the energy deposited per group
+
+  for (size_t iHit = 0; iHit < hitsCollection->entries(); iHit++) {
+    hit   = static_cast<SimpleHit *>(hitsCollection->GetHit(iHit));
+    hitEn = hit->GetEdep();
+    totalEnergy += hitEn;
+    G4String vol_name = hit->GetPhysicalVolumeName();
+    
+    bool group_found  = false;
+    for (int igroup = 0; igroup < ngroups; ++igroup) {
+      if (vol_name.rfind(groups[igroup], 0) == 0) {
+        edep_groups[igroup] += hitEn;
+        group_found = true;
+        break;
+      }
+    }
+  }
+  
+  // Get the map of all registered PhysicalVolumes
+  //auto aPVmap = G4PhysicalVolumeStore::GetInstance()->GetMap();
+
+  // For each volume name in the map, if it matches a group, add the energy of the associated 
+  // placements to the group
+  /*
+  for( auto pair : aPVmap)
+  {
+    G4String vol_name = pair.first;
+
+    G4cout << "DEBUG: trying to match volume name: " << vol_name << G4endl;
+
+    bool group_found  = false;
+    for (int igroup = 0; igroup < ngroups; ++igroup) {
+      if (vol_name.rfind(groups[igroup], 0) == 0) {
+        G4cout << "DEBUG: Name matches group " << groups[igroup] << G4endl;
+        G4cout << "DEBUG: Volumes in group: " << pair.second.size() << G4endl;
+
+        //Iterate over the Placed volumes with this name
+        for(auto pvol : pair.second)
+        {
+          G4cout << "DEBUG: Volume with ID: " << pvol->GetInstanceID() << G4endl;
+
+          hit   = static_cast<SimpleHit *>(hitsCollection->GetHit(pvol->GetInstanceID()));
+          hitEn = hit->GetEdep();
+          totalEnergy += hitEn;
+
+          edep_groups[igroup] += hitEn;
+          group_found = true;
+          break;
+        }
+      }
+    }
+  }
+  */
+
+  /*
   for (size_t iHit = 0; iHit < hitsCollection->entries(); iHit++) {
     hit   = static_cast<SimpleHit *>(hitsCollection->GetHit(iHit));
     hitEn = hit->GetEdep();
@@ -149,6 +205,7 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
       G4cout << "EndOfEventAction " << eventId << " : id " << std::setw(5) << iHit << "  edep " << std::setprecision(2)
              << std::setw(12) << std::fixed << hitEn / MeV << " [MeV] logical " << vol_name << G4endl;
   }
+  */
 
   if (fVerbosity > 1) {
     for (int igroup = 0; igroup < ngroups; ++igroup) {

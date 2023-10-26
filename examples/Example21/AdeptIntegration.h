@@ -70,10 +70,13 @@ private:
   TrackBuffer fBuffer;                 ///< Vector of buffers of tracks to/from device (per thread)
   G4Region *fRegion{nullptr};          ///< Region to which applies
   std::unordered_map<std::string, int> *sensitive_volume_index;    ///< Map of sensitive volumes
-  std::unordered_map<const G4VPhysicalVolume *, int> *fScoringMap; ///< Map used by G4 for scoring
+  std::unordered_map<int, int> *fvecgeom_to_g4_map; ///< Maps Vecgeom placement IDs to geant4 ones
+  std::unordered_map<int, int> *fvolume_to_hit_map; ///< Maps Vecgeom placement IDs to Hits
 
   VolAuxData *CreateVolAuxData(const G4VPhysicalVolume *g4world, const vecgeom::VPlacedVolume *world,
                                const G4HepEmState &hepEmState);
+  /// @brief Used to map VecGeom to Geant4 volumes for scoring
+  void InitializeSensitiveVolumeMapping(const G4VPhysicalVolume *g4world, const vecgeom::VPlacedVolume *world);
   void InitBVH();
   void InitializeUserData() { fScoring->InitializeOnGPU(); }
   bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
@@ -87,7 +90,7 @@ public:
   int GetNfromDevice() const { return fBuffer.fromDevice.size(); }
 
 public:
-  AdeptIntegration() = default;
+  AdeptIntegration();
   ~AdeptIntegration();
 
   /// @brief Adds a track to the buffer
@@ -117,7 +120,7 @@ public:
   // std::unique_ptr<G4FastSimHitMaker> fHitMaker;
 
   void SetSensitiveVolumes(std::unordered_map<std::string, int> *sv) { sensitive_volume_index = sv; }
-  void SetScoringMap(std::unordered_map<const G4VPhysicalVolume *, int> *sm) { fScoringMap = sm; }
+  //void SetScoringMap(std::unordered_map<const G4VPhysicalVolume *, int> *sm) { fScoringMap = sm; }
 };
 
 #endif

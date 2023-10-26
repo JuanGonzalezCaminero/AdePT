@@ -84,6 +84,9 @@ private:
   G4String fRegion_name;
   std::vector<G4String> fSensitive_volumes;
   std::vector<G4String> fSensitive_group;
+  //std::unordered_map<const G4VPhysicalVolume *, int> *fCPUScoringMap; ///< Maps Physical Volumes to hit IDs
+  G4VPhysicalVolume *fWorld;
+
   bool fAllInRegionSensitive{false};
   bool fActivate_AdePT{true};
 
@@ -93,6 +96,9 @@ private:
   // field related members
   G4ThreeVector fMagFieldVector;
   PrimaryGeneratorAction *fPrimaryGenerator;
+
+  // Physical Volumes where we will score
+  std::set<const G4VPhysicalVolume*> fSensitivePhysicalVolumes;
 
 };
 

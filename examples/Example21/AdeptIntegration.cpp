@@ -25,9 +25,19 @@
 #include "SensitiveDetector.hh"
 #include "EventAction.hh"
 
+#include <VecGeom/base/Stopwatch.h>
+
+AdeptIntegration::AdeptIntegration()
+{
+  fvecgeom_to_g4_map = new std::unordered_map<int, int>();
+  fvolume_to_hit_map = new std::unordered_map<int, int>();
+}
+
 AdeptIntegration::~AdeptIntegration()
 {
   delete fScoring;
+  delete fvecgeom_to_g4_map;
+  delete fvolume_to_hit_map;
 }
 
 void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry,
@@ -55,7 +65,7 @@ void AdeptIntegration::Initialize(bool common_data)
 
   fNumVolumes = vecgeom::GeoManager::Instance().GetRegisteredVolumesCount();
   // We set the number of sensitive volumes equal to the number of placed volumes. This is temporary
-  fNumSensitive = vecgeom::GeoManager::Instance().GetPlacedVolumesCount();
+  fNumSensitive = 0;//vecgeom::GeoManager::Instance().GetPlacedVolumesCount();
   if (fNumVolumes == 0) throw std::runtime_error("AdeptIntegration::Initialize: Number of geometry volumes is zero.");
 
   if (common_data) {
@@ -93,9 +103,27 @@ void AdeptIntegration::Initialize(bool common_data)
   G4cout << "=== AdeptIntegration: initializing transport engine for thread: " << G4Threading::G4GetThreadId()
          << G4endl;
 
+  vecgeom::cxx::Stopwatch initTimer;
+  // Initialize mapping of Vecgeom sensitive PlacedVolume IDs to G4 PhysicalVOlume IDs
+  initTimer.Start();
+  InitializeSensitiveVolumeMapping(
+        G4TransportationManager::GetTransportationManager()->GetNavigatorForTracking()->GetWorldVolume(),
+        vecgeom::GeoManager::Instance().GetWorld());
+
+  // The number of sensitive physical volumes is the same on G4 and VecGeom
+  //fNumSensitive = fvecgeom_to_g4_map->size();
+  //fNumSensitive = 50000;
+
   // Initialize user scoring data
-  fScoring     = new AdeptScoring(fNumSensitive);
+  printf("DEBUG: Initializing AdePT basic scoring with: %d sensitive volumes\n",  fNumSensitive);
+  fScoring     = new AdeptScoring(fNumSensitive, fvolume_to_hit_map, vecgeom::GeoManager::Instance().GetPlacedVolumesCount());
   fScoring_dev = fScoring->InitializeOnGPU();
+
+  // TODO: Why is this called 3 times even when running only 1 thread?
+  // TODO: Taking about 4 secs per call for CMS geometry, one way to deal with this is making it static and 
+  // initializing it before (i.e. not doing it in the worker threads), another thing that can be done if we want 
+  // to do this for each worker so they have their own mapping to access (Could be too large if we mapped 
+  // touchables) is to exclude this from the run-time, since it's just initialization
 
   // Initialize the transport engine for the current thread
   InitializeGPU();
@@ -189,9 +217,15 @@ void AdeptIntegration::Shower(int event)
   auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
   SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
 
-  for (auto id = 0; id != fNumSensitive; id++) {
-    // here I add the energy deposition to the pre-existing Geant4 hit based on id
-    fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
+  // For each Vecgeom-G4 sensitive volume pair
+  for(auto pair: (*fvecgeom_to_g4_map))
+  {
+    auto vecgeom_id = pair.first;
+    auto geant4_id = pair.second;
+    fastSimSensitive->ProcessHits(geant4_id, 
+                                  fScoring->fScoringPerVolume.energyDeposit[fScoring->fPvolToHit[vecgeom_id]] / copcore::units::MeV);
+    // fastSimSensitive->ProcessHits(geant4_id, 
+    //                               fScoring->fScoringPerVolume.energyDeposit[vecgeom_id] / copcore::units::MeV);
   }
 
   EventAction *evAct      = dynamic_cast<EventAction *>(G4EventManager::GetEventManager()->GetUserEventAction());
@@ -227,6 +261,7 @@ adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume
     const auto vol   = pvol->GetLogicalVolume();
     int nd           = g4vol->GetNoDaughters();
     auto daughters   = vol->GetDaughters();
+
     if (nd != daughters.size()) throw std::runtime_error("Fatal: CreateVolAuxData: Mismatch in number of daughters");
     // Check if transformations are matching
     auto g4trans = g4pvol->GetTranslation();
@@ -277,6 +312,7 @@ adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume
       auxData[vol->id()].fGPUregion = 1;
       ninregion++;
     //}
+    
 
     // Check if the logical volume is sensitive
     bool sens = false;
@@ -288,7 +324,6 @@ adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume
                                    " not sensitive while VecGeom one " + std::string(vol->GetName()) + " is.");
         if (auxData[vol->id()].fSensIndex < 0) nlogical_sens++;
         auxData[vol->id()].fSensIndex = sensvol.second;
-        fScoringMap->insert(std::pair<const G4VPhysicalVolume *, int>(g4pvol, pvol->id()));
         nphysical_sens++;
         break;
       }
@@ -319,4 +354,39 @@ adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume
   G4cout << "Number of physical sensitive:     " << nphysical_sens << "\n";
   G4cout << "Number of physical in GPU region: " << ninregion << "\n";
   return auxData;
+}
+
+void AdeptIntegration::InitializeSensitiveVolumeMapping(const G4VPhysicalVolume *g4world,
+                                                        const vecgeom::VPlacedVolume *world)
+{
+  std::function<void(G4VPhysicalVolume const *, vecgeom::VPlacedVolume const *)> visitAndSetupMapping = 
+  [&](G4VPhysicalVolume const *g4_pvol, vecgeom::VPlacedVolume const *vg_pvol) {
+    const auto g4_lvol = g4_pvol->GetLogicalVolume();
+    const auto vg_lvol = vg_pvol->GetLogicalVolume();
+    int nd           = g4_lvol->GetNoDaughters();
+
+    // Check if the LogicalVolume is sensitive
+    for (auto sensvol : (*sensitive_volume_index))
+    {
+      if (vg_lvol->GetName() == sensvol.first || 
+          std::string(vg_lvol->GetName()).rfind(sensvol.first + "0x", 0) == 0)
+        {
+          bool new_pvol = fvecgeom_to_g4_map->insert(std::pair<int, int>(vg_pvol->id(), g4_pvol->GetInstanceID())).second;
+          if(new_pvol)
+          {
+            (*fvolume_to_hit_map)[vg_pvol->id()] = fNumSensitive;
+            fNumSensitive++;
+          }
+          break;
+        }
+    }
+    // Visit the daughters
+    for (int id = 0; id < nd; ++id) {
+      auto g4_daughter = g4_lvol->GetDaughter(id);
+      auto vg_daughter = vg_lvol->GetDaughters()[id];
+      visitAndSetupMapping(g4_daughter, vg_daughter);
+    }
+  };
+
+  visitAndSetupMapping(g4world, world);
 }

@@ -35,10 +35,11 @@ void AdePTTrackingManager::BuildPhysicsTable(const G4ParticleDefinition &part) {
   bool sequential             = (rmType == G4RunManager::sequentialRM);
 
   fAdept->SetSensitiveVolumes(sensitive_volume_index);
-  fAdept->SetScoringMap(fScoringMap);
+  //fAdept->SetScoringMap(fScoringMap);
   fAdept->SetRegion(fRegion);
 
  auto tid = G4Threading::G4GetThreadId();
+ 
   if (tid < 0) {
     // This is supposed to set the max batching for Adept to allocate properly the memory
     int num_threads = G4RunManager::GetRunManager()->GetNumberOfThreads();
@@ -78,6 +79,7 @@ void AdePTTrackingManager::FlushEvent() {
   if (fVerbosity > 0)
     G4cout << "No more particles on the stack, triggering shower to flush the AdePT buffer with "
            << fAdept->GetNtoDevice() << " particles left." << G4endl;
+
 
   fAdept->Shower(G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID());
 }

@@ -292,18 +292,30 @@ void AdeptIntegration::FreeGPU()
 
 void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
 {
+  printf("DEBUG: Shower GPU\n");
+
   using TrackData = adeptint::TrackData;
   // Capacity of the different containers aka the maximum number of particles.
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
+
+  printf("DEBUG: Check 1\n");
   COPCORE_CUDA_CHECK(vecgeom::cxx::CudaDeviceSetStackLimit(8192));
+  
+  printf("DEBUG: Check 2\n");
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
   GPUstate &gpuState                            = *static_cast<GPUstate *>(fGPUstate);
 
+  printf("DEBUG: Check 3\n");
+  
   Secondaries secondaries{gpuState.allmgr_d.trackmgr[0], gpuState.allmgr_d.trackmgr[1], gpuState.allmgr_d.trackmgr[2]};
+
+  printf("DEBUG: Check 4\n");
 
   ParticleType &electrons = gpuState.particles[ParticleType::Electron];
   ParticleType &positrons = gpuState.particles[ParticleType::Positron];
   ParticleType &gammas    = gpuState.particles[ParticleType::Gamma];
+
+  printf("DEBUG: Check 5\n");
 
   // copy buffer of tracks to device
   COPCORE_CUDA_CHECK(cudaMemcpyAsync(gpuState.toDevice_dev, buffer.toDevice.data(),
@@ -327,6 +339,8 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
   gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
   gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
   gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
+
+  printf("DEBUG: Check 6\n");
 
   constexpr float compactThreshold = 0.9;
   constexpr int MaxBlocks          = 1024;
@@ -359,6 +373,8 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
   };
   
   int niter = 0;
+  printf("DEBUG: Calling kernels\n");
+
   do {
 
     // *** ELECTRONS ***
@@ -440,6 +456,9 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
     }
 
   } while (inFlight > 0 && loopingNo < 200);
+
+  printf("DEBUG: After transport\n");
+
 
   if (fDebugLevel > 0) {
     G4cout << inFlight << " in flight, " << numLeaked << " leaked, " << num_compact << " compacted\n";

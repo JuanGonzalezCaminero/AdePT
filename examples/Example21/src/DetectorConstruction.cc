@@ -54,7 +54,7 @@
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-DetectorConstruction::DetectorConstruction(AdePTTrackingManager* tr) : G4VUserDetectorConstruction(), fAdeptTrMgr(tr)
+DetectorConstruction::DetectorConstruction() : G4VUserDetectorConstruction()
 {
   fDetectorMessenger = new DetectorMessenger(this);
 }
@@ -205,13 +205,6 @@ void DetectorConstruction::ConstructSDandField()
         SetSensitiveDetector(lvol, caloSD);
       }
     }
-  }
-
-  if(fAdeptTrMgr){
-    fAdeptTrMgr->SetSensitiveVolumes(&(caloSD->fSensitive_volume_index));
-    fAdeptTrMgr->SetVerbosity(fVerbosity);
-    fAdeptTrMgr->SetBufferThreshold(fBufferThreshold);
-    fAdeptTrMgr->SetTrackSlots(fTrackSlotsGPU);
   }
 
   /*

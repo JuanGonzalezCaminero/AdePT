@@ -117,6 +117,7 @@ G4VPhysicalVolume *DetectorConstruction::Construct()
 
 void DetectorConstruction::ConstructSDandField()
 {
+  G4cout << "DEBUG: DetectorConstruction::ConstructSDandField" << G4endl;
   if (fMagFieldVector.mag() > 0.0) {
     // Apply a global uniform magnetic field along the Z axis.
     // Notice that only if the magnetic field is not zero, the Geant4

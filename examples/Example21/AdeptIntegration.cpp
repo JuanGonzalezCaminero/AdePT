@@ -110,12 +110,7 @@ void AdeptIntegration::Initialize(bool common_data)
         G4TransportationManager::GetTransportationManager()->GetNavigatorForTracking()->GetWorldVolume(),
         vecgeom::GeoManager::Instance().GetWorld());
 
-  // The number of sensitive physical volumes is the same on G4 and VecGeom
-  //fNumSensitive = fvecgeom_to_g4_map->size();
-  //fNumSensitive = 50000;
-
   // Initialize user scoring data
-  printf("DEBUG: Initializing AdePT basic scoring with: %d sensitive volumes\n",  fNumSensitive);
   fScoring     = new AdeptScoring(fNumSensitive, fvolume_to_hit_map, vecgeom::GeoManager::Instance().GetPlacedVolumesCount());
   fScoring_dev = fScoring->InitializeOnGPU();
 

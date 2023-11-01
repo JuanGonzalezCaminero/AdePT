@@ -33,7 +33,7 @@ class DetectorMessenger;
 
 class DetectorConstruction : public G4VUserDetectorConstruction {
 public:
-  DetectorConstruction(AdePTTrackingManager* tm);
+  DetectorConstruction();
   virtual ~DetectorConstruction();
 
   virtual G4VPhysicalVolume *Construct() final;
@@ -68,15 +68,18 @@ public:
   // Set AdePT buffer threshold
   void SetBufferThreshold(int value) { fBufferThreshold = value; }
 
+  int GetBufferThreshold() { return fBufferThreshold; }
+
   // Set total number of track slots on GPU
   void SetTrackSlots(double value) { fTrackSlotsGPU = value; }
+
+  double GetTrackSlots() { return fTrackSlotsGPU; }
 
   std::vector<G4String> &GetSensitiveGroups() { return fSensitive_group; }
 
   G4String &GetRegionName() { return fRegion_name; }
 
 private:
-  AdePTTrackingManager* fAdeptTrMgr; /// custom tracking manager delegating the transport to AdePT
   int fVerbosity{0};        ///< Actually verbosity for AdePT integration
   int fBufferThreshold{20}; ///< Buffer threshold for AdePT transport
   double fTrackSlotsGPU{1}; ///< Total number of track slots allocated on GPU (millions)

@@ -7,7 +7,7 @@
 ## Geant4 macro for modelling simplified sampling calorimeters
 ## =============================================================================
 ##
-/run/numberOfThreads 1
+/run/numberOfThreads 16
 /control/verbose 0
 /run/verbose 0
 /process/verbose 0
@@ -19,9 +19,9 @@
 /example17/detector/regionname EcalRegion
 /example17/adept/verbose 0
 ## Threshold for buffering tracks before sending to GPU
-/example17/adept/threshold 200
+/example17/adept/threshold 2000
 ## Total number of GPU track slots (not per thread)
-/example17/adept/milliontrackslots 1
+/example17/adept/milliontrackslots 15
 
 /example17/detector/addsensitivevolume EAPD_01
 /example17/detector/addsensitivevolume EAPD_02
@@ -131,12 +131,12 @@
 /example17/gun/setDefault
 /gun/particle e-
 /gun/energy 10 GeV
-/gun/number 20000
+/gun/number 2000
 /gun/position 0 0 0
 /example17/gun/print true
 
 #If false, the following parameters are ignored
-/example17/gun/randomizeGun false
+/example17/gun/randomizeGun true
 #Usage: /example17/gun/addParticle type ["weight" weight] ["energy" energy unit]
 /example17/gun/addParticle e- weight 1 energy 10 GeV
 /example17/gun/addParticle proton weight 0 energy 10 GeV
@@ -158,11 +158,11 @@
 # by default all created models are active
 /param/ActivateModel AdePT
 #/analysis/setFileName example17_fastsim_100events.root
-/run/beamOn 1
+/run/beamOn 16
 
-/example17/setSeed 1
+#/example17/setSeed 16
 
 # run events with full (detailed) simulation
-/param/InActivateModel AdePT
+#/param/InActivateModel AdePT
 #/analysis/setFileName example17_fullsim_100events.root
-/run/beamOn 1
+#/run/beamOn 16

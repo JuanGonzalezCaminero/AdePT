@@ -48,6 +48,8 @@ int fVerbosity{0};
 /// AdePT buffer threshold
 int fBufferThreshold{20};
 
+bool fInitDone{false};
+
 G4double ProductionCut = 0.7 * copcore::units::mm;
 
 int MCIndex[100];

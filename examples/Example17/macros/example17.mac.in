@@ -7,7 +7,7 @@
 ## Geant4 macro for modelling simplified sampling calorimeters
 ## =============================================================================
 ##
-/run/numberOfThreads 1
+/run/numberOfThreads 2
 /control/verbose 0
 /run/verbose 0
 /process/verbose 0
@@ -152,17 +152,17 @@
 ##/tracking/verbose 1
 ##/process/list
 
-/example17/setSeed 1
+#/example17/setSeed 1
 
 # run events with parametrised simulation
 # by default all created models are active
-/param/ActivateModel AdePT
+#/param/ActivateModel AdePT
 #/analysis/setFileName example17_fastsim_100events.root
-/run/beamOn 1
+#/run/beamOn 1
 
 /example17/setSeed 1
 
 # run events with full (detailed) simulation
 /param/InActivateModel AdePT
 #/analysis/setFileName example17_fullsim_100events.root
-/run/beamOn 1
+/run/beamOn 2

@@ -11,8 +11,8 @@
 
 // The clock to use for measurements
 #define CLOCK std::chrono::system_clock
-// The precission with which we will provide the results
-#define PRECISSION std::chrono::microseconds
+// The precision with which we will provide the results
+#define PRECISION std::chrono::microseconds
 
 /**
  * @brief A type containing a timestamp, accumulated time, and whether the timer is running
@@ -75,8 +75,8 @@ public:
   /** @brief Returns the accumulated duration for the specified tag in seconds */
   double getDurationSeconds(TTag tag)
   {
-    return (double)(std::chrono::duration_cast<PRECISSION>(fTimers[tag].accumulatedDuration)).count() /
-           PRECISSION::period::den;
+    return (double)(std::chrono::duration_cast<PRECISION>(fTimers[tag].accumulatedDuration)).count() /
+           PRECISION::period::den;
   }
 
   /** @brief Sets the accumulator value for the specified tag */

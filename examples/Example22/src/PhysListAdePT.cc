@@ -91,7 +91,7 @@ void PhysListAdePT::ConstructProcess()
   // Setup tracking manager
 
   auto caloSD = dynamic_cast<SensitiveDetector*>(G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector"));
-  fTrackingManager->SetSensitiveVolumes(&(caloSD->fSensitive_volume_index));
+  fTrackingManager->SetSensitiveVolumes(&(caloSD->fSensitiveLogicalVolumes));
   fTrackingManager->SetScoringMap(caloSD->fScoringMap);
   fTrackingManager->SetVerbosity(0);
   fTrackingManager->SetBufferThreshold(fDetector->GetBufferThreshold());

@@ -137,6 +137,8 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
     hitEn = hit->GetEdep();
     totalEnergy += hitEn;
     G4String vol_name = hit->GetPhysicalVolumeName();
+
+    //G4cout << vol_name << G4endl;
     
     bool group_found  = false;
     for (int igroup = 0; igroup < ngroups; ++igroup) {
@@ -146,7 +148,7 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
         break;
       }
     }
-    if (group_found) continue;
+    //if (group_found) continue;
     if (hitEn > 1 && fVerbosity > 1)
       G4cout << "EndOfEventAction " << eventId << " : id " << std::setw(5) << iHit << "  edep " << std::setprecision(2)
              << std::setw(12) << std::fixed << hitEn / MeV << " [MeV] logical " << vol_name << G4endl;

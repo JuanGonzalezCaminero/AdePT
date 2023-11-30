@@ -106,7 +106,8 @@ G4bool SensitiveDetector::ProcessHits(G4Step *aStep, G4TouchableHistory *)
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 G4bool SensitiveDetector::ProcessHits(const G4FastHit *aHit, const G4FastTrack *aTrack, G4TouchableHistory *aTouchable)
-{
+{ 
+  /*
   G4double edep = aHit->GetEnergy();
   if (edep == 0.) return true;
 
@@ -120,7 +121,7 @@ G4bool SensitiveDetector::ProcessHits(const G4FastHit *aHit, const G4FastTrack *
   hit->AddEdep(edep);
   // set type to fast sim
   hit->SetType(1);
-
+  */
   return true;
 }
 
@@ -128,6 +129,7 @@ G4bool SensitiveDetector::ProcessHits(const G4FastHit *aHit, const G4FastTrack *
 
 G4bool SensitiveDetector::ProcessHits(int pvolID, double energy)
 {
+  /*
   if (energy == 0.) return true;
 
   if(fScoringMap->find(pvolID) != fScoringMap->end())
@@ -141,6 +143,7 @@ G4bool SensitiveDetector::ProcessHits(int pvolID, double energy)
 
     return true;
   }
+  */
   return false;
 }
 

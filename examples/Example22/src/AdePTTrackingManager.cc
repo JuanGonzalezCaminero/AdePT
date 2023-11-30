@@ -39,7 +39,7 @@ void AdePTTrackingManager::BuildPhysicsTable(const G4ParticleDefinition &part) {
     G4RunManager::RMType rmType = G4RunManager::GetRunManager()->GetRunManagerType();
     bool sequential             = (rmType == G4RunManager::sequentialRM);
 
-    fAdept->SetSensitiveVolumes(sensitive_volume_index);
+    fAdept->SetSensitiveVolumes(fSensitiveLogicalVolumes);
     fAdept->SetRegion(fRegion);
 
     auto tid = G4Threading::G4GetThreadId();

@@ -308,14 +308,21 @@ adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume
 
     // Check if the logical volume is sensitive
     bool sens = false;
-    for (auto sensvol : (*sensitive_volume_index)) {
-      if (vg_lvol->GetName() == sensvol.first || std::string(vg_lvol->GetName()).rfind(sensvol.first + "0x", 0) == 0) {
+    for (G4LogicalVolume* sensvol : (*fSensitiveLogicalVolumes)) {
+      if (vg_lvol->GetName() == sensvol->GetName() ||
+          std::string(vg_lvol->GetName()).rfind(sensvol->GetName() + "0x", 0) == 0) {
         sens = true;
+
         if (g4_lvol->GetSensitiveDetector() == nullptr)
           throw std::runtime_error("Fatal: CreateVolAuxData: G4LogicalVolume " + std::string(g4_lvol->GetName()) +
                                    " not sensitive while VecGeom one " + std::string(vg_lvol->GetName()) + " is.");
-        if (auxData[vg_lvol->id()].fSensIndex < 0) nlogical_sens++;
-        auxData[vg_lvol->id()].fSensIndex = sensvol.second;
+        // Mark the LV as sensitive in its auxiliary data 
+        if (auxData[vg_lvol->id()].fSensIndex < 0) 
+        {
+          nlogical_sens++;
+          G4cout << "VecGeom: Making " << vg_lvol->GetName() << " sensitive" << G4endl;
+        }
+        auxData[vg_lvol->id()].fSensIndex = 1;
         nphysical_sens++;
 
         // Initialize mapping of Vecgeom sensitive PlacedVolume IDs to G4 PhysicalVolume IDs

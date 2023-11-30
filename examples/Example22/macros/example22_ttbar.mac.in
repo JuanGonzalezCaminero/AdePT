@@ -15,14 +15,15 @@
 ##
 /example22/setSeed 1
 
-/example22/detector/filename @CMS2018_GDML@
+#/example22/detector/filename @CMS2018_GDML@
+/example22/detector/filename cms-run3.gdml
 /example22/detector/regionname EcalRegion
 /example22/adept/verbose 0
 ## Threshold for buffering tracks before sending to GPU
 /example22/adept/threshold 5000
 ## Total number of GPU track slots (not per thread)
-/example22/adept/milliontrackslots 8
-/example22/adept/millionhitslots 8
+/example22/adept/milliontrackslots 12
+/example22/adept/millionhitslots 2
 
 /example22/detector/addsensitivevolume EAPD_01
 /example22/detector/addsensitivevolume EAPD_02

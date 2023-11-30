@@ -61,6 +61,7 @@ public:
   virtual void Initialize(G4HCofThisEvent *HCE) final;
   /// Process energy deposit from the full simulation.
   virtual G4bool ProcessHits(G4Step *aStep, G4TouchableHistory *aROhist) final;
+  
   /// Process energy deposit from the fast simulation.
   virtual G4bool ProcessHits(const G4FastHit *aHit, const G4FastTrack *aTrack, G4TouchableHistory *aROhist) final;
 
@@ -68,7 +69,8 @@ public:
 
   SimpleHit *RetrieveAndSetupHit(G4TouchableHistory *aTouchable);
 
-  std::unordered_map<std::string, int> fSensitive_volume_index;
+  //std::unordered_map<std::string, int> fSensitive_volume_index;
+  std::set<G4LogicalVolume*> fSensitiveLogicalVolumes;
   std::unordered_map<size_t, size_t> *fScoringMap;
 
 private:

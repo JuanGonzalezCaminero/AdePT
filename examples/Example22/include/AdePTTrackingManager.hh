@@ -30,7 +30,7 @@ public:
   /// Set buffer threshold for AdePT
   void SetBufferThreshold(int value) { fBufferThreshold = value; }
 
-  void SetSensitiveVolumes(std::unordered_map<std::string, int> *sv) { sensitive_volume_index = sv; }
+  void SetSensitiveVolumes(std::set<G4LogicalVolume*> *sv) { fSensitiveLogicalVolumes = sv; }
 
   void SetScoringMap(std::unordered_map<size_t, size_t> *sm) { fScoringMap = sm; }
 
@@ -61,7 +61,7 @@ G4double ProductionCut = 0.7 * copcore::units::mm;
 int MCIndex[100];
 double fTrackSlotsGPU{1}; ///< Total number of track slots allocated on GPU (in millions)
 double fHitSlots{1}; ///< Total number of hit slots allocated on GPU and Host (in millions)
-std::unordered_map<std::string, int> *sensitive_volume_index;
+std::set<G4LogicalVolume*> *fSensitiveLogicalVolumes;
 std::unordered_map<size_t, size_t> *fScoringMap;
 
 };

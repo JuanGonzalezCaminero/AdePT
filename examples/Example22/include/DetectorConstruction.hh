@@ -11,6 +11,8 @@
 #include "AdeptIntegration.h"
 #include "AdePTTrackingManager.hh"
 
+#include <G4GDMLParser.hh>
+
 class G4Box;
 class G4LogicalVolume;
 class G4VPhysicalVolume;
@@ -107,6 +109,8 @@ private:
 
   // Physical Volumes where we will score
   std::set<const G4VPhysicalVolume*> fSensitivePhysicalVolumes;
+
+  G4GDMLParser fParser;
 
 };
 

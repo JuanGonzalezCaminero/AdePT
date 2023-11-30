@@ -15,7 +15,8 @@
 ##
 /example22/setSeed 1
 
-/example22/detector/filename @CMS2018_GDML@
+#/example22/detector/filename @CMS2018_GDML@
+/example22/detector/filename cms-run3.gdml
 /example22/adept/verbose 0
 ## Threshold for buffering tracks before sending to GPU
 /example22/adept/threshold 200
@@ -126,7 +127,7 @@
 /example22/gun/print true
 
 #If false, the following parameters are ignored
-/example22/gun/randomizeGun true
+/example22/gun/randomizeGun false
 #Usage: /example22/gun/addParticle type ["weight" weight] ["energy" energy unit]
 /example22/gun/addParticle e- weight 1 energy 10 GeV
 /example22/gun/addParticle proton weight 0 energy 10 GeV

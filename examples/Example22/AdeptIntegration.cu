@@ -47,7 +47,7 @@ __constant__ __device__ adeptint::VolAuxData *gVolAuxData = nullptr;
 __constant__ __device__ double BzFieldValue               = 0;
 
 G4HepEmState *AdeptIntegration::fg4hepem_state{nullptr};
-int AdeptIntegration::kCapacity = 1024 * 1024;
+int AdeptIntegration::kCapacity          = 1024 * 1024;
 int AdeptIntegration::kHitBufferCapacity = 1024 * 1024;
 
 void AdeptIntegration::VolAuxArray::InitializeOnGPU()
@@ -143,7 +143,7 @@ __global__ void InitTracks(adeptint::TrackData *trackinfo, int ntracks, int star
     int lvolID  = volume->GetLogicalVolume()->id();
     // adeptint::VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
     adeptint::VolAuxData const &auxData = auxDataArray[lvolID];
-    bool isGPURegion = auxData.fGPUregion;
+    bool isGPURegion                    = auxData.fGPUregion;
     assert(isGPURegion);
   }
 }
@@ -311,6 +311,11 @@ __global__ void PrintBufferStateGPU(HostScoring *aScoring_device)
   printf("DEBUG: Buffer Capacity: %u\n", aScoring_device->fBufferCapacity);
 }
 
+// TEMP: DELETE THIS
+#include "Run.hh"
+#include "G4RunManager.hh"
+#include "TestManager.h"
+
 void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
 {
   using TrackData = adeptint::TrackData;
@@ -448,7 +453,13 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
     if (fScoring->CheckAndFlush(gpuState.stats->hostscoring_stats, fScoring_dev, gpuState.stream)) {
       // Synchronize the stream used to copy back the hits
       COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
-      
+
+      // TEMP: CHECK COPIED SIZE, DELETE THIS
+      Run *currentRun = static_cast<Run *>(G4RunManager::GetRunManager()->GetNonConstCurrentRun());
+      currentRun->GetTestManager()->addToAccumulator(Run::accumulators::EVENT_HIT_COPY_SIZE,
+                                                     fScoring->fBufferCapacity * sizeof(GPUHit) / (1024 * 1024));
+      currentRun->GetTestManager()->addToAccumulator(Run::accumulators::EVENT_HIT_COPY_SIZE_SQ,
+                                                     pow(fScoring->fBufferCapacity * sizeof(GPUHit) / (1024 * 1024), 2)); 
       // Process the hits on CPU
       ProcessGPUHits(gpuState.stats->hostscoring_stats);
     }

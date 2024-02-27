@@ -74,8 +74,10 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     const int lvolID          = volume->GetLogicalVolume()->id();
     VolAuxData const &auxData = auxDataArray[lvolID];
 
+    // Update the AdePT Track with the values computed in the step and put it back in the 
+    // active queue or in the leaked tracks buffer for transfer back to the host
     auto survive = [&](bool leak = false) {
-      currentTrack.eKin     = eKin;
+      currentTrack.eKin       = eKin;
       currentTrack.pos        = pos;
       currentTrack.dir        = dir;
       currentTrack.globalTime = globalTime;
@@ -125,6 +127,11 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
       theTrack->SetNumIALeft(numIALeft, ip);
     }
 
+    // Based on the number-of-interaction-left, compute and store in the track:
+    // - The step limit due to the continous energy loss (Stored in track fRange)
+    // - The Mean free path
+    // - The step length until the closest discrete interaction (fPStepLength, set fGStepLength=fPStepLength for now)
+    // - Store the closest interaction as winner process (fPIndxWon)
     G4HepEmElectronManager::HowFarToDiscreteInteraction(&g4HepEmData, &g4HepEmPars, &elTrack);
 
     bool restrictedPhysicalStepLength = false;
@@ -147,7 +154,9 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
         // limit is an over-approximation, but that is fine for our purpose.
       }
     }
-
+    
+    // Sets the Geometrical step length based on displacement by MSC
+    // MSC may also further limit the Physical step length
     G4HepEmElectronManager::HowFarToMSC(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
 
     // Remember MSC values for the next step(s).
@@ -165,7 +174,8 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     int winnerProcessIndex = theTrack->GetWinnerProcessIndex();
     // Leave the range and MFP inside the G4HepEmTrack. If we split kernels, we
     // also need to carry them over!
-
+    
+    // Now we call the transportation to compute whether we can move the specified geometrical length
     // Check if there's a volume boundary in between.
     bool propagated = true;
     double geometryStepLength;
@@ -176,6 +186,7 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     } else {
       geometryStepLength = BVHNavigator::ComputeStepAndNextVolume(pos, dir, geometricalStepLengthFromPhysics, navState,
                                                                   nextState, kPush);
+      // Move the track                                                            
       pos += geometryStepLength * dir;
     }
 
@@ -190,6 +201,12 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     theTrack->SetOnBoundary(nextState.IsOnBoundary());
 
     // Apply continuous effects.
+    // Update the physical step length in case we hit a boundary (We obtain an approximation in that case)
+    // Then, based on the actual physical step length (Which may be the originally requested one):
+    // Update the number-of-interaction-left 
+    // Apply continuous energy loss
+    // Get MSC direction change and displacement
+    // Apply energy loss fluctuations
     bool stopped = G4HepEmElectronManager::PerformContinuous(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
 
     // Collect the direction change and displacement by MSC.
@@ -224,7 +241,7 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
           } else if (reducedSafety > kGeomMinLength) {
             pos += displacement * (reducedSafety / dispR);
           }
-          // 3. Very small safety: do nothing.
+          // 3. Very small safety: do nothing. (This introduces some error as we ignore MSC)
         }
       }
     }
@@ -241,7 +258,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     localTime += deltaTime;
     properTime += deltaTime * (restMass / eKin);
 
-    // userScoring->AccountChargedStep(Charge);
     if (auxData.fSensIndex >= 0)
       userScoring->RecordHit(IsElectron ? 0 : 1,       // Particle type
                              elTrack.GetPStepLength(), // Step length
@@ -326,6 +342,7 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
       survive();
       continue;
     } else if (winnerProcessIndex < 0) {
+      // Step limited by continuous energy loss
       // No discrete process, move on.
       survive();
       continue;

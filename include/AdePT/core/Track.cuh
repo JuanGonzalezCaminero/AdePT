@@ -17,6 +17,7 @@ struct Track {
   using Precision = vecgeom::Precision;
   RanluxppDouble rngState;
   double eKin;
+  double preStepEKin{0};
   double numIALeft[3];
   double initialRange;
   double dynamicRangeFactor;
@@ -27,8 +28,23 @@ struct Track {
   double properTime{0};
 
   vecgeom::Vector3D<Precision> pos;
+  vecgeom::Vector3D<Precision> preStepPos;
   vecgeom::Vector3D<Precision> dir;
+  vecgeom::Vector3D<Precision> preStepDir;
   vecgeom::NavStateIndex navState;
+
+  // // Variables used to store navigation results
+  bool reachedInteractionPoint{false};
+  double geometryStepLength{0};
+  vecgeom::NavStateIndex nextState;
+  
+  // Variables used to store physics results from G4HepEM
+  double geometricalStepLengthFromPhysics{0};
+  int winnerProcessIndex{0};
+  double preStepMFPs[3];
+  double fPEmxSec{0};
+
+
 
   __host__ __device__ double Uniform() { return rngState.Rndm(); }
 

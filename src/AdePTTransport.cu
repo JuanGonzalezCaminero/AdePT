@@ -7,7 +7,7 @@
 #include <AdePT/navigation/BVHNavigator.h>
 #include <AdePT/base/MParray.h>
 #include <AdePT/kernels/electrons.cuh>
-#include <AdePT/kernels/gammas.cuh>
+// #include <AdePT/kernels/gammas.cuh>
 
 #include <VecGeom/base/Config.h>
 #ifdef VECGEOM_ENABLE_CUDA
@@ -31,6 +31,8 @@
 #include <numeric>
 #include <algorithm>
 
+
+#include <AdePT/kernels/experimental.cuh>
 
 
 __constant__ __device__ struct G4HepEmParameters g4HepEmPars;
@@ -387,18 +389,33 @@ void AdePTTransport::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
       COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, positrons.event, 0));
     }
 
+    // DEBUG
+    // cudaDeviceSynchronize();
+
     // *** GAMMAS ***
     int numGammas = gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight;
     if (numGammas > 0) {
       transportBlocks = (numGammas + TransportThreads - 1) / TransportThreads;
       transportBlocks = std::min(transportBlocks, MaxBlocks);
 
-      TransportGammas<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
-          gammas.trackmgr, secondaries, gammas.leakedTracks, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev);
+      P1<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+        gammas.trackmgr, VolAuxArray::GetInstance().fAuxData_dev
+      );
+      T1<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+        gammas.trackmgr, gammas.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev
+      );
+      P2<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+        gammas.trackmgr, secondaries, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev
+      );
+      // TransportGammas<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //     gammas.trackmgr, secondaries, gammas.leakedTracks, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev);
 
       COPCORE_CUDA_CHECK(cudaEventRecord(gammas.event, gammas.stream));
       COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, gammas.event, 0));
     }
+
+    // DEBUG
+    // cudaDeviceSynchronize();
 
     // *** END OF TRANSPORT ***
 
@@ -423,6 +440,9 @@ void AdePTTransport::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
       auto compacted = gpuState.allmgr_h.trackmgr[i]->SwapAndCompact(compactThreshold, gpuState.particles[i].stream);
       if (compacted) num_compact++;
     }
+
+    // DEBUG
+    // cudaDeviceSynchronize();
 
     // Check if we need to flush the hits buffer
     if (fScoring->CheckAndFlush(gpuState.stats->hostscoring_stats, fScoring_dev, gpuState.stream)) {

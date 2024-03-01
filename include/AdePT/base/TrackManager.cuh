@@ -34,16 +34,26 @@ namespace device_impl_trackmgr {
 
 template <typename Track>
 __global__ void construct_trackmanager(void *addr, size_t capacity, adept::MParray *activeSlots,
-                                       adept::MParray *nextSlots, Track *buffer)
+                                       adept::MParray *nextSlots, Track *buffer)//, adept::MParray *pairProductionTracks, 
+                                       //adept::MParray *comptonTracks, adept::MParray *photoelectricTracks, )
 {
   // Invoke inplace TrackManager constructor
   auto mgr           = new (addr) TrackManager<Track>(capacity);
   mgr->fActiveTracks = activeSlots;
   mgr->fNextTracks   = nextSlots;
   mgr->fBuffer       = buffer;
+
+  // mgr->fPairProductionTracks   = pairProductionTracks;
+  // mgr->fComptonTracks   = comptonTracks;
+  // mgr->fPhotoelectricTracks   = photoelectricTracks;
+
   // construct the MParray objects inplace
   adept::MParray::MakeInstanceAt(capacity, activeSlots);
   adept::MParray::MakeInstanceAt(capacity, nextSlots);
+
+  // adept::MParray::MakeInstanceAt(capacity, pairProductionTracks);
+  // adept::MParray::MakeInstanceAt(capacity, comptonTracks);
+  // adept::MParray::MakeInstanceAt(capacity, photoelectricTracks);
 }
 
 template <typename Track>
@@ -103,6 +113,11 @@ struct TrackManager {
   adept::MParray *fNextTracks{nullptr};   ///< Array of rack slots for the next iteration (device pointer)
   Track *fBuffer{nullptr};                ///< Storage for the circular buffer of tracks (device pointer)
 
+  // Arrays storing the tracks for each interaction
+  adept::MParray *fPairProductionTracks{nullptr};
+  adept::MParray *fComptonTracks{nullptr};
+  adept::MParray *fPhotoelectricTracks{nullptr};
+
   /// @brief Construction done on host but holding device pointers.
   __host__ __device__ TrackManager(size_t capacity) : fCapacity(capacity) { fNextFree.store(0); }
 
@@ -116,8 +131,12 @@ struct TrackManager {
     COPCORE_CUDA_CHECK(cudaMalloc(&fNextTracks, QueueSize));
     COPCORE_CUDA_CHECK(cudaMalloc(&fBuffer, TracksSize));
 
+    // COPCORE_CUDA_CHECK(cudaMalloc(&fPairProductionTracks, QueueSize));
+    // COPCORE_CUDA_CHECK(cudaMalloc(&fComptonTracks, QueueSize));
+    // COPCORE_CUDA_CHECK(cudaMalloc(&fPhotoelectricTracks, QueueSize));
+
     device_impl_trackmgr::construct_trackmanager<Track>
-        <<<1, 1>>>(fInstance_d, fCapacity, fActiveTracks, fNextTracks, fBuffer);
+        <<<1, 1>>>(fInstance_d, fCapacity, fActiveTracks, fNextTracks, fBuffer);//fPairProductionTracks, fComptonTracks, fPhotoelectricTracks);
     return fInstance_d;
   }
 
@@ -127,6 +146,10 @@ struct TrackManager {
     COPCORE_CUDA_CHECK(cudaFree(fActiveTracks));
     COPCORE_CUDA_CHECK(cudaFree(fNextTracks));
     COPCORE_CUDA_CHECK(cudaFree(fInstance_d));
+
+    // COPCORE_CUDA_CHECK(cudaFree(fPairProductionTracks));
+    // COPCORE_CUDA_CHECK(cudaFree(fComptonTracks));
+    // COPCORE_CUDA_CHECK(cudaFree(fPhotoelectricTracks));
   }
 
   /// @brief Swap active and next track slots. Compact if the fill percentage is higher than the threshold.
@@ -134,6 +157,11 @@ struct TrackManager {
   template <typename Stream>
   bool SwapAndCompact(float compact_threshold, Stream stream)
   {
+    // Clear interation arrays
+    // fPairProductionTracks->clear();
+    // fComptonTracks->clear();
+    // fPhotoelectricTracks->clear();
+
     // check if the compacting threshold is hit
     int used     = fStats.GetNused();
     int inFlight = fStats.fInFlight;

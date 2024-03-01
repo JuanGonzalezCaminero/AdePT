@@ -7,7 +7,7 @@
 #include <AdePT/navigation/BVHNavigator.h>
 #include <AdePT/base/MParray.h>
 #include <AdePT/kernels/electrons.cuh>
-// #include <AdePT/kernels/gammas.cuh>
+#include <AdePT/kernels/gammas.cuh>
 
 #include <VecGeom/base/Config.h>
 #ifdef VECGEOM_ENABLE_CUDA
@@ -32,7 +32,7 @@
 #include <algorithm>
 
 
-#include <AdePT/kernels/experimental.cuh>
+// #include <AdePT/kernels/experimental.cuh>
 
 
 __constant__ __device__ struct G4HepEmParameters g4HepEmPars;
@@ -196,7 +196,7 @@ __global__ void ClearLeakedQueues(LeakedTracks all)
 bool AdePTTransport::InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world)
 {
   // Try 16384 if debug mode is crashing
-  COPCORE_CUDA_CHECK(vecgeom::cxx::CudaDeviceSetStackLimit(8192*2));
+  COPCORE_CUDA_CHECK(vecgeom::cxx::CudaDeviceSetStackLimit(8192));
   // Upload geometry to GPU.
   auto &cudaManager = vecgeom::cxx::CudaManager::Instance();
   cudaManager.LoadGeometry(world);
@@ -396,19 +396,29 @@ void AdePTTransport::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
     int numGammas = gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight;
     if (numGammas > 0) {
       transportBlocks = (numGammas + TransportThreads - 1) / TransportThreads;
+      //printf("%d\n", transportBlocks);
       transportBlocks = std::min(transportBlocks, MaxBlocks);
 
-      P1<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
-        gammas.trackmgr, VolAuxArray::GetInstance().fAuxData_dev
-      );
-      T1<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
-        gammas.trackmgr, gammas.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev
-      );
-      P2<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
-        gammas.trackmgr, secondaries, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev
-      );
-      // TransportGammas<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
-      //     gammas.trackmgr, secondaries, gammas.leakedTracks, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev);
+      // P1<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //   gammas.trackmgr, VolAuxArray::GetInstance().fAuxData_dev
+      // );
+      // T1<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //   gammas.trackmgr, gammas.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev
+      // );
+      // P2<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //   gammas.trackmgr, secondaries, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev
+      // );
+      // PairProduction<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //   gammas.trackmgr, secondaries, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev
+      // );
+      // Compton<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //   gammas.trackmgr, secondaries, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev
+      // );
+      // Photoelectric<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      //   gammas.trackmgr, secondaries, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev
+      // );
+      TransportGammas<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+          gammas.trackmgr, secondaries, gammas.leakedTracks, fScoring_dev, VolAuxArray::GetInstance().fAuxData_dev);
 
       COPCORE_CUDA_CHECK(cudaEventRecord(gammas.event, gammas.stream));
       COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, gammas.event, 0));
@@ -432,6 +442,10 @@ void AdePTTransport::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
     inFlight  = 0;
     numLeaked = 0;
     for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
+      // if(i == 2)
+      // {
+      //   printf("%d\n", gpuState.stats->mgr_stats[i].fInFlight);
+      // }
       // Update stats for host track manager objects
       gpuState.allmgr_h.trackmgr[i]->fStats = gpuState.stats->mgr_stats[i];
       inFlight += gpuState.stats->mgr_stats[i].fInFlight;

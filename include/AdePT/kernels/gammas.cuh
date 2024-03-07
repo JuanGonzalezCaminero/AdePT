@@ -32,6 +32,7 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
   constexpr int Pdg                  = 22;
   int activeSize                     = gammas->fActiveTracks->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
+    // Retrieve the track
     const int slot      = (*gammas->fActiveTracks)[i];
     Track &currentTrack = (*gammas)[slot];
     // Save the pre-step values needed for scoring

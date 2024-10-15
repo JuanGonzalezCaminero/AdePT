@@ -82,9 +82,9 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
   auto aTestManager = currentRun->GetTestManager();
   if (currentRun->GetDoBenchmark()) {
     aTestManager->timerStop(Run::timers::EVENT);
+    aTestManager->addToAccumulator(Run::accumulators::NUM_PARTICLES, aEvent->GetPrimaryVertex()->GetNumberOfParticle());
   }
-  aTestManager->addToAccumulator(Run::accumulators::NUM_PARTICLES, aEvent->GetPrimaryVertex()->GetNumberOfParticle());
-
+  
   // Get hits collection ID (only once)
   if (fHitCollectionID == -1) {
     fHitCollectionID = G4SDManager::GetSDMpointer()->GetCollectionID("hits");

@@ -7,14 +7,15 @@ import numpy as np
 import sys
 from cycler import cycler
 
-if len(sys.argv) < 5:
-	print("Usage: python3 plot_bar_chart.py output_file x_label y_label data.csv [data_2.csv data_3.csv ...]")
+if len(sys.argv) < 6:
+	print("Usage: python3 plot_bar_chart.py output_file x_label y_label max_values data.csv [data_2.csv data_3.csv ...]")
 	exit()
 
 output_file = sys.argv[1]
 x_label = sys.argv[2]
 y_label = sys.argv[3]
-data_files = sys.argv[4:]
+max_values = sys.argv[4]
+data_files = sys.argv[5:]
 
 
 prop_cycle = plt.rcParams['axes.prop_cycle']
@@ -22,17 +23,19 @@ colors = prop_cycle.by_key()['color']
 #Uncomment this line for custom color cycle
 #plt.rc('axes', prop_cycle=(cycler('color', ['c', 'orange', 'r', 'g', 'yellow', 'violet'])))
 
-plt.figure(figsize=(20, 12))
+plt.rcParams.update({'font.size': 25})
+
+plt.figure(figsize=(30, 12))
 
 #Adjust the width based on the number of bars we need to plot, leaving space on the sides
-width=0.6/(len(sys.argv)-2)
+width=1.5/(len(sys.argv)-2)
 
 for i in range(len(data_files)):
 	file = data_files[i]
 	data = pd.read_csv(file)
 
-	#Sort the columns in ascending order
-	data = data.reindex(data.mean().sort_values().index, axis=1)
+	#Sort the columns in descending order
+	data = data.reindex(data.mean().sort_values(ascending=False).index, axis=1)
 	
 	#Get the mean of each timing
 	means = data.mean()
@@ -46,10 +49,12 @@ for i in range(len(data_files)):
 	plt.grid(True, axis='y', color='black', linestyle='dotted')
 	
 	#Plot the data in a bar chart
-	plt.bar(x=x+((i-len(data_files)//2)*width), height=means, yerr=errors, width=width, label=file)
-	plt.xticks(x, data.columns)
+	plt.bar(x=x+((i-len(data_files)//2)*width), height=means[:max_values], yerr=errors[:max_values], width=width, label=file)
+	#plt.errorbar(x=x+((i-len(data_files)//2)*width), y=means[-max_values:] , yerr=errors[-max_values:], fmt='none', color="black")
+	plt.xticks(x, data.columns[:max_values])
 	plt.ylabel(y_label)
 	plt.legend()
 
 #plt.show()
+plt.title("Accumulated energy deposition per physical volume, per 100 events", pad=20)
 plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.5)

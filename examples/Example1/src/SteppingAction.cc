@@ -11,9 +11,9 @@ SteppingAction::~SteppingAction() {}
 void SteppingAction::UserSteppingAction(const G4Step *theStep)
 {
   // Kill the particle if it has done over 1000 steps
-  fNumSteps++;
-  if (fNumSteps > 10000) {
-    G4cout << "Warning: Killing track over 10000 steps" << G4endl;
-    theStep->GetTrack()->SetTrackStatus(fStopAndKill);
-  }
+  // fNumSteps++;
+  // if (fNumSteps > 10000) {
+  //   G4cout << "Warning: Killing track over 10000 steps" << G4endl;
+  //   theStep->GetTrack()->SetTrackStatus(fStopAndKill);
+  // }
 }

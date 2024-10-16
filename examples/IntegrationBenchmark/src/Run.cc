@@ -93,11 +93,11 @@ void Run::EndOfRunSummary(G4String aOutputDirectory, G4String aOutputFilename)
     } else if (fRunAction->GetDoBenchmark()) {
       // Recover the results from each event and output them to the specified file
       double eventTime = (*aBenchmarkStates)[i][Run::timers::EVENT];
-      double nonEMTime = (*aBenchmarkStates)[i][Run::accumulators::NONEM_EVT];
-      double ecalTime  = eventTime - nonEMTime;
+      // double nonEMTime = (*aBenchmarkStates)[i][Run::accumulators::NONEM_EVT];
+      // double ecalTime  = eventTime - nonEMTime;
       aOutputTestManager.setAccumulator("Event", eventTime);
-      aOutputTestManager.setAccumulator("Non EM", nonEMTime);
-      aOutputTestManager.setAccumulator("ECAL", ecalTime);
+      // aOutputTestManager.setAccumulator("Non EM", nonEMTime);
+      // aOutputTestManager.setAccumulator("ECAL", ecalTime);
 
       aOutputTestManager.setOutputDirectory(fRunAction->GetOutputDirectory());
       aOutputTestManager.setOutputFilename(fRunAction->GetOutputFilename());

@@ -106,6 +106,7 @@ def run_test(random_seed, configuration_files):
                 if run["use_adept"]:
                     completed_process = subprocess.run([bin_dir + run["executable"], 
                                                     "-m", "temp_macro",
+                                                    "--do_benchmark", 
                                                     "--output_dir", results_dir,
                                                     "--output_file", run["output_file"],
                                                     test_option], 
@@ -113,10 +114,11 @@ def run_test(random_seed, configuration_files):
                 else:
                     completed_process = subprocess.run([bin_dir + run["executable"], 
                                                     "-m", "temp_macro",
+                                                    "--do_benchmark", 
                                                     "--output_dir", results_dir,
                                                     "--output_file", run["output_file"],
                                                     test_option, 
-                                                    "--no_AdePT"], 
+                                                    "--noadept"], 
                                                     capture_output=True, text=True)
 
                 if(completed_process.stderr != None and len(completed_process.stderr) != 0):

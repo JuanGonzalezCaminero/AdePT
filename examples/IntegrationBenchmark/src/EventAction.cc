@@ -85,8 +85,12 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
   if (fRunAction->GetDoBenchmark()) {
     aTestManager->timerStop(Run::timers::EVENT);
   }
-  aTestManager->addToAccumulator(Run::accumulators::NUM_PARTICLES, aEvent->GetPrimaryVertex()->GetNumberOfParticle());
-
+  const auto nVtx = aEvent->GetNumberOfPrimaryVertex();
+  for (int vtx = 0; vtx < nVtx; ++vtx) {
+    const auto aPrimaryVertex = aEvent->GetPrimaryVertex(vtx);
+    aTestManager->addToAccumulator(Run::accumulators::NUM_PARTICLES, aPrimaryVertex->GetNumberOfParticle());
+  }
+  
   // Get hits collection ID (only once)
   if (fHitCollectionID == -1) {
     fHitCollectionID = G4SDManager::GetSDMpointer()->GetCollectionID("hits");
@@ -157,23 +161,23 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
   } else if (fRunAction->GetDoBenchmark()) {
     // Get the timings
     double eventTime = aTestManager->getDurationSeconds(Run::timers::EVENT);
-    double nonEMTime = aTestManager->getAccumulator(Run::accumulators::NONEM_EVT);
-    double ecalTime  = eventTime - nonEMTime;
+    // double nonEMTime = aTestManager->getAccumulator(Run::accumulators::NONEM_EVT);
+    // double ecalTime  = eventTime - nonEMTime;
 
     // Accumulate the results with the rest of events of this worker thread to provide global stats
     aTestManager->addToAccumulator(Run::accumulators::EVENT_SUM, eventTime);
     aTestManager->addToAccumulator(Run::accumulators::EVENT_SQ, eventTime * eventTime);
-    aTestManager->addToAccumulator(Run::accumulators::NONEM_SUM, nonEMTime);
-    aTestManager->addToAccumulator(Run::accumulators::NONEM_SQ, nonEMTime * nonEMTime);
-    aTestManager->addToAccumulator(Run::accumulators::ECAL_SUM, ecalTime);
-    aTestManager->addToAccumulator(Run::accumulators::ECAL_SQ, ecalTime * ecalTime);
+    // aTestManager->addToAccumulator(Run::accumulators::NONEM_SUM, nonEMTime);
+    // aTestManager->addToAccumulator(Run::accumulators::NONEM_SQ, nonEMTime * nonEMTime);
+    // aTestManager->addToAccumulator(Run::accumulators::ECAL_SUM, ecalTime);
+    // aTestManager->addToAccumulator(Run::accumulators::ECAL_SQ, ecalTime * ecalTime);
 
     // Record the current contents of the TestManager in order to be able to extract per-event data
     TestManagerStore<int>::GetInstance()->RecordState(aTestManager);
 
     // Reset the timers for the next event
     aTestManager->removeTimer(Run::timers::EVENT);
-    aTestManager->removeAccumulator(Run::accumulators::NONEM_EVT);
+    // aTestManager->removeAccumulator(Run::accumulators::NONEM_EVT);
   }
 
   // Restore the original IO precission

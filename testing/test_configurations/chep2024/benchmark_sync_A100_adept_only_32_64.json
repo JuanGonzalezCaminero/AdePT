@@ -1,0 +1,74 @@
+{
+    "bin_dir" : "../build/BuildProducts/bin/",
+    "results_dir" : "benchmark_results/",
+    "plotting_scripts_dir" : "plotting_scripts/",
+    "plots_dir" : "benchmark_plots/",
+    "postprocessing_scripts_dir" : "postprocessing_scripts/",
+    "postprocessing_dir" : "benchmark_postprocessing/",
+    "templates_dir" : "templates/",
+    "macro_template" : "e1_macro_template",
+    
+    "tests":
+    [
+        {
+            "name" : "Example 1 AdePT benchmark",
+            "type" : "benchmark",
+            
+            "plots" : 
+            [],
+
+            "postprocessing" :
+            [],
+
+            "runs":
+            [
+                {
+                    "name" : "Example1 AdePT 128 ttbar 32 thread no field",
+                    "executable" : "integrationBenchmark",
+                    "output_file" : "integrationBenchmark_adept_32t_128ttbar",
+                    "ui_dir" : "adept",
+                    "use_adept" : true,
+
+                    "configuration" : 
+                    {
+                        "num_threads" : 32,
+                        "gdml_file" : "../build/cms2018_sd.gdml",
+                        "adept_threshold" : 250000,
+                        "adept_million_track_slots" : 64,
+                        "adept_million_hit_slots" : 16,
+                        "magnetic_field" : "0 0 0 tesla",
+                        "particle_type" : "e-",
+                        "gun_energy" : "0 GeV",
+                        "num_particles" : 0,
+                        "randomize_gun" : false,
+                        "random_seed" : 0,
+                        "num_events" : 128
+                    }
+                },
+                {
+                    "name" : "Example1 AdePT 256 ttbar 64 thread no field",
+                    "executable" : "integrationBenchmark",
+                    "output_file" : "integrationBenchmark_adept_64t_256ttbar",
+                    "ui_dir" : "adept",
+                    "use_adept" : true,
+
+                    "configuration" : 
+                    {
+                        "num_threads" : 64,
+                        "gdml_file" : "../build/cms2018_sd.gdml",
+                        "adept_threshold" : 125000,
+                        "adept_million_track_slots" : 64,
+                        "adept_million_hit_slots" : 24,
+                        "magnetic_field" : "0 0 0 tesla",
+                        "particle_type" : "e-",
+                        "gun_energy" : "0 GeV",
+                        "num_particles" : 0,
+                        "randomize_gun" : false,
+                        "random_seed" : 0,
+                        "num_events" : 256
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -171,9 +171,9 @@
                     {
                         "num_threads" : 64,
                         "gdml_file" : "../build/cms2018_sd.gdml",
-                        "adept_threshold" : 250000,
+                        "adept_threshold" : 125000,
                         "adept_million_track_slots" : 64,
-                        "adept_million_hit_slots" : 16,
+                        "adept_million_hit_slots" : 24,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
                         "gun_energy" : "0 GeV",

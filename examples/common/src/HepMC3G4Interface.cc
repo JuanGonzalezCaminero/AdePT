@@ -79,7 +79,8 @@ void HepMC3G4Interface::HepMC2G4(const HepMC3::GenEvent *hepmcevt, G4Event *g4ev
 void HepMC3G4Interface::GeneratePrimaryVertex(G4Event *anEvent)
 {
   // generate next event
-  const auto hepmcEvent = GenerateHepMCEvent(anEvent->GetEventID());
+  // WORKAROUND: In order to be able to test with more events than we have, just reuse them when we run out
+  const auto hepmcEvent = GenerateHepMCEvent(anEvent->GetEventID()%100);
   if (!hepmcEvent) {
     G4cout << "HepMCInterface: no generated particles. run terminated..." << G4endl;
     G4RunManager::GetRunManager()->AbortRun();

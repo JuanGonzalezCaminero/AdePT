@@ -27,7 +27,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_1t_4ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {
@@ -44,7 +44,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_2t_8ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {
@@ -61,7 +61,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_4t_16ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {
@@ -78,7 +78,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_8t_32ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {
@@ -95,7 +95,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_16t_64ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {
@@ -112,7 +112,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_32t_128ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {
@@ -129,7 +129,7 @@
                     "executable" : "integrationBenchmark",
                     "output_file" : "integrationBenchmark_geant4_64t_256ttbar",
                     "ui_dir" : "adept",
-                    "use_adept" : true,
+                    "use_adept" : false,
 
                     "configuration" : 
                     {

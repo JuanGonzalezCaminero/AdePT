@@ -138,7 +138,7 @@
                         "magnetic_field" : "0 0 0 tesla",
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 196
+                        "num_events" : 192
                     }
                 }
             ]

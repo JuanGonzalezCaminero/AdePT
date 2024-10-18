@@ -45,7 +45,7 @@
 /run/initialize
 
 ## User-defined Event verbosity: 1 = total edep, 2 = energy deposit per placed sensitive volume
-/eventAction/verbose 1
+/eventAction/verbose 0
 
 /gun/hepmc
 /generator/hepmcAscii/maxevents 256

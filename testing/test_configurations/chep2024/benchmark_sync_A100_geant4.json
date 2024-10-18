@@ -140,6 +140,23 @@
                         "random_seed" : 0,
                         "num_events" : 256
                     }
+                },
+                {
+                    "name" : "Example1 Geant4 384 ttbar 96 thread no field",
+                    "executable" : "integrationBenchmark",
+                    "output_file" : "integrationBenchmark_geant4_96t_384ttbar",
+                    "ui_dir" : "adept",
+                    "use_adept" : false,
+
+                    "configuration" : 
+                    {
+                        "num_threads" : 96,
+                        "gdml_file" : "../build/cms2018_sd.gdml",
+                        "magnetic_field" : "0 0 0 tesla",
+                        "randomize_gun" : false,
+                        "random_seed" : 0,
+                        "num_events" : 384
+                    }
                 }
             ]
         }

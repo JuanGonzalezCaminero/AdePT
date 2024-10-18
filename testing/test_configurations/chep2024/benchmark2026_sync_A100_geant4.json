@@ -125,37 +125,20 @@
                     }
                 },
                 {
-                    "name" : "Example1 Geant4 256 ttbar 64 thread no field",
+                    "name" : "Example1 Geant4 196 ttbar 48 thread no field",
                     "executable" : "integrationBenchmark",
-                    "output_file" : "integrationBenchmark2026_geant4_64t_256ttbar",
+                    "output_file" : "integrationBenchmark2026_geant4_48t_196ttbar",
                     "ui_dir" : "adept",
                     "use_adept" : false,
 
                     "configuration" : 
                     {
-                        "num_threads" : 64,
+                        "num_threads" : 48,
                         "gdml_file" : "../build/cms2026D110DD4hep_fix.gdml",
                         "magnetic_field" : "0 0 0 tesla",
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 256
-                    }
-                },
-                {
-                    "name" : "Example1 Geant4 384 ttbar 96 thread no field",
-                    "executable" : "integrationBenchmark",
-                    "output_file" : "integrationBenchmark2026_geant4_96t_384ttbar",
-                    "ui_dir" : "adept",
-                    "use_adept" : false,
-
-                    "configuration" : 
-                    {
-                        "num_threads" : 96,
-                        "gdml_file" : "../build/cms2026D110DD4hep_fix.gdml",
-                        "magnetic_field" : "0 0 0 tesla",
-                        "randomize_gun" : false,
-                        "random_seed" : 0,
-                        "num_events" : 384
+                        "num_events" : 196
                     }
                 }
             ]

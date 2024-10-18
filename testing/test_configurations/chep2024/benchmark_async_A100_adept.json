@@ -42,7 +42,7 @@
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 4
                     }
                 },
                 {
@@ -65,7 +65,7 @@
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 8
                     }
                 },
                 {
@@ -88,7 +88,7 @@
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 16
                     }
                 },
                 {
@@ -111,7 +111,7 @@
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 32
                     }
                 },
                 {
@@ -134,7 +134,7 @@
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 64
                     }
                 },
                 {
@@ -157,7 +157,7 @@
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 128
                     }
                 },
                 {
@@ -171,16 +171,16 @@
                     {
                         "num_threads" : 64,
                         "gdml_file" : "../build/cms2018_sd.gdml",
-                        "adept_threshold" : 250000,
+                        "adept_threshold" : 125000,
                         "adept_million_track_slots" : 64,
-                        "adept_million_hit_slots" : 16,
+                        "adept_million_hit_slots" : 24,
                         "magnetic_field" : "0 0 0 tesla",
                         "particle_type" : "e-",
                         "gun_energy" : "0 GeV",
                         "num_particles" : 0,
                         "randomize_gun" : false,
                         "random_seed" : 0,
-                        "num_events" : 1
+                        "num_events" : 256
                     }
                 }
             ]

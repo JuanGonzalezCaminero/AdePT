@@ -1,0 +1,45 @@
+{
+    "bin_dir" : "../build/BuildProducts/bin/",
+    "results_dir" : "benchmark_results/",
+    "plotting_scripts_dir" : "plotting_scripts/",
+    "plots_dir" : "benchmark_plots/",
+    "postprocessing_scripts_dir" : "postprocessing_scripts/",
+    "postprocessing_dir" : "benchmark_postprocessing/",
+    "templates_dir" : "templates/",
+    "macro_template" : "e1_g4_macro_template",
+    
+    "tests":
+    [
+        {
+            "name" : "Example1 Geant4 benchmark",
+            "type" : "benchmark",
+            
+            "plots" : 
+            [],
+
+            "postprocessing" :
+            [],
+
+            "runs":
+            [
+                {
+                    "name" : "Example1 Geant4 384 ttbar 96 thread no field",
+                    "executable" : "integrationBenchmark",
+                    "output_file" : "integrationBenchmark_geant4_96t_384ttbar",
+                    "ui_dir" : "adept",
+                    "use_adept" : false,
+
+                    "configuration" : 
+                    {
+                        "num_threads" : 96,
+                        "gdml_file" : "../build/cms2018_sd.gdml",
+                        "magnetic_field" : "0 0 0 tesla",
+                        "randomize_gun" : false,
+                        "random_seed" : 0,
+                        "num_events" : 384
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -72,6 +72,7 @@ bool AdePTTransport<IntegrationLayer>::InitializeGeometry(const vecgeom::cxx::VP
   {
     std::cout <<  "CUDA Device stack limit: " <<  fCUDAStackLimit << "\n";
     cudaDeviceSetLimit(cudaLimitStackSize, fCUDAStackLimit);
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, 512 * 1024 * 1024);
   }
   bool success = true;
 #ifdef ADEPT_USE_SURF

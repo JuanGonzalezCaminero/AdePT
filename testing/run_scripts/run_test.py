@@ -87,46 +87,46 @@ def run_test(random_seed, configuration_files):
                 #Create a macro with the specified settings and save it to a file
                 macro = macro_template
                 macro = macro.substitute(run["configuration"])
-                # temp_macro = open("temp_macro", "w")
-                temp_macro = open(run["output_file"] + ".mac", "w")
+                temp_macro = open("temp_macro", "w")
+                # temp_macro = open(run["output_file"] + ".mac", "w")
                 temp_macro.write(macro)
                 temp_macro.close()
 
                 #Choose the proper option to select the data we extract
-                # test_option = ""
-                # if test["type"] == "benchmark":
-                #     test_option = "--do_benchmark"
-                # elif test["type"] == "validation":
-                #     test_option = "--do_validation"
+                test_option = ""
+                if test["type"] == "benchmark":
+                    test_option = "--do_benchmark"
+                elif test["type"] == "validation":
+                    test_option = "--do_validation"
 
-                # #If the output file already exists, overwrite it
-                # if os.path.exists(results_dir + "/" + run["output_file"] + ".csv"):
-                #     os.remove(results_dir + "/" + run["output_file"] + ".csv")
+                #If the output file already exists, overwrite it
+                if os.path.exists(results_dir + "/" + run["output_file"] + ".csv"):
+                    os.remove(results_dir + "/" + run["output_file"] + ".csv")
 
-                # #Run the simulation
-                # if run["use_adept"]:
-                #     completed_process = subprocess.run([bin_dir + run["executable"], 
-                #                                     "-m", "temp_macro",
-                #                                     "--do_benchmark", 
-                #                                     "--output_dir", results_dir,
-                #                                     "--output_file", run["output_file"],
-                #                                     test_option], 
-                #                                     capture_output=True, text=True)
-                # else:
-                #     completed_process = subprocess.run([bin_dir + run["executable"], 
-                #                                     "-m", "temp_macro",
-                #                                     "--do_benchmark", 
-                #                                     "--output_dir", results_dir,
-                #                                     "--output_file", run["output_file"],
-                #                                     test_option, 
-                #                                     "--noadept"], 
-                #                                     capture_output=True, text=True)
+                #Run the simulation
+                if run["use_adept"]:
+                    completed_process = subprocess.run([bin_dir + run["executable"], 
+                                                    "-m", "temp_macro",
+                                                    "--do_benchmark", 
+                                                    "--output_dir", results_dir,
+                                                    "--output_file", run["output_file"],
+                                                    test_option], 
+                                                    capture_output=True, text=True)
+                else:
+                    completed_process = subprocess.run([bin_dir + run["executable"], 
+                                                    "-m", "temp_macro",
+                                                    "--do_benchmark", 
+                                                    "--output_dir", results_dir,
+                                                    "--output_file", run["output_file"],
+                                                    test_option, 
+                                                    "--noadept"], 
+                                                    capture_output=True, text=True)
 
-                # if(completed_process.stderr != None and len(completed_process.stderr) != 0):
-                #     print("\nAn error occurred in run: " + run["name"])
-                #     print(completed_process.stderr)
+                if(completed_process.stderr != None and len(completed_process.stderr) != 0):
+                    print("\nAn error occurred in run: " + run["name"])
+                    print(completed_process.stderr)
                 
-                # os.remove("temp_macro")
+                os.remove("temp_macro")
             print()
             
             #After all the runs in this test have finished generate the plots configured for it

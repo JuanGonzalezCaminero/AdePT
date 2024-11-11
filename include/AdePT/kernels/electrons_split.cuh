@@ -278,7 +278,7 @@ static __global__ void ElectronRelocation(adept::TrackManager<Track> *electrons)
 
 template <bool IsElectron, typename Scoring>
 static __global__ void ElectronInteractions(adept::TrackManager<Track> *electrons, G4HepEmElectronTrack *hepEMTracks,
-                                            Secondaries secondaries, MParrayTracks *leakedQueue, Scoring *userScoring,
+                                            Secondaries secondaries, FreeSlots freeSlots, MParrayTracks *leakedQueue, Scoring *userScoring,
                                             VolAuxData const *auxDataArray)
 {
   constexpr Precision kPushOutRegion = 10 * vecgeom::kTolerance;
@@ -341,8 +341,21 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       if (!IsElectron) {
         // Annihilate the stopped positron into two gammas heading to opposite
         // directions (isotropic).
+
+        ///////////////////////////////////////////////////////////////////
+
+        // int freeSlot1{-1}, freeSlot2{-1};
+        // Track &gamma1 = freeSlots.gammas->dequeue(freeSlot1) ? (*secondaries.gammas)[freeSlot1] : secondaries.gammas->NextTrack();
+        // Track &gamma2 = freeSlots.gammas->dequeue(freeSlot2) ? (*secondaries.gammas)[freeSlot2] : secondaries.gammas->NextTrack();
+        // // In case we are re-using a track, add it to the next iteration list
+        // if(freeSlot1 >= 0) secondaries.gammas->AddSlot(freeSlot1);
+        // // In case we are re-using a track, add it to the next iteration list
+        // if(freeSlot2 >= 0) secondaries.gammas->AddSlot(freeSlot2);
+
         Track &gamma1 = secondaries.gammas->NextTrack();
         Track &gamma2 = secondaries.gammas->NextTrack();
+
+        ///////////////////////////////////////////////////////////////////
 
         adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 2);
 
@@ -366,6 +379,20 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
         gamma2.eKin     = copcore::units::kElectronMassC2;
         gamma2.dir      = -gamma1.dir;
       }
+
+      ///////////////////////////////////////////////////////////////////
+
+      // Free this slot
+
+      if (IsElectron) {
+        freeSlots.electrons->enqueue(slot);
+      }
+      // else{
+      //   freeSlots.positrons->enqueue(slot);
+      // }
+      
+      ///////////////////////////////////////////////////////////////////
+
       // Particles are killed by not enqueuing them into the new activeQueue.
       continue;
     }
@@ -437,7 +464,17 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       double dirSecondary[3];
       G4HepEmElectronInteractionIoni::SampleDirections(currentTrack.eKin, deltaEkin, dirSecondary, dirPrimary, &rnge);
 
-      Track &secondary = secondaries.electrons->NextTrack();
+      ///////////////////////////////////////////////////////////////////
+
+      // Try to get a free track if it exists:
+      int freeSlot{-1};
+      Track &secondary = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
+      // In case we are re-using a track, add it to the next iteration list
+      if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+
+      // Track &secondary = secondaries.electrons->NextTrack();
+
+      ///////////////////////////////////////////////////////////////////
 
       adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 1, /*numPositrons*/ 0, /*numGammas*/ 0);
 
@@ -465,7 +502,18 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       double dirSecondary[3];
       G4HepEmElectronInteractionBrem::SampleDirections(currentTrack.eKin, deltaEkin, dirSecondary, dirPrimary, &rnge);
 
+      ///////////////////////////////////////////////////////////////////
+
+      // // Try to get a free track if it exists:
+      // int freeSlot{-1};
+      // Track &gamma = freeSlots.gammas->dequeue(freeSlot) ? (*secondaries.gammas)[freeSlot] : secondaries.gammas->NextTrack();
+      // // In case we are re-using a track, add it to the next iteration list
+      // if(freeSlot >= 0) secondaries.gammas->AddSlot(freeSlot);
+
       Track &gamma = secondaries.gammas->NextTrack();
+
+      ///////////////////////////////////////////////////////////////////
+
       adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 1);
 
       gamma.InitAsSecondary(currentTrack.pos, currentTrack.navState, currentTrack.globalTime);
@@ -487,8 +535,21 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       G4HepEmPositronInteractionAnnihilation::SampleEnergyAndDirectionsInFlight(
           currentTrack.eKin, dirPrimary, &theGamma1Ekin, theGamma1Dir, &theGamma2Ekin, theGamma2Dir, &rnge);
 
+      ///////////////////////////////////////////////////////////////////
+
+      // int freeSlot1{-1}, freeSlot2{-1};
+      // Track &gamma1 = freeSlots.gammas->dequeue(freeSlot1) ? (*secondaries.gammas)[freeSlot1] : secondaries.gammas->NextTrack();
+      // Track &gamma2 = freeSlots.gammas->dequeue(freeSlot2) ? (*secondaries.gammas)[freeSlot2] : secondaries.gammas->NextTrack();
+      // // In case we are re-using a track, add it to the next iteration list
+      // if(freeSlot1 >= 0) secondaries.gammas->AddSlot(freeSlot1);
+      // // In case we are re-using a track, add it to the next iteration list
+      // if(freeSlot2 >= 0) secondaries.gammas->AddSlot(freeSlot2);
+
       Track &gamma1 = secondaries.gammas->NextTrack();
       Track &gamma2 = secondaries.gammas->NextTrack();
+
+      ///////////////////////////////////////////////////////////////////
+
       adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 2);
 
       gamma1.InitAsSecondary(currentTrack.pos, currentTrack.navState, currentTrack.globalTime);
@@ -503,6 +564,14 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       gamma2.rngState = currentTrack.rngState;
       gamma2.eKin     = theGamma2Ekin;
       gamma2.dir.Set(theGamma2Dir[0], theGamma2Dir[1], theGamma2Dir[2]);
+
+      ///////////////////////////////////////////////////////////////////
+
+      // Free this slot
+
+      // freeSlots.positrons->enqueue(slot);
+
+      ///////////////////////////////////////////////////////////////////
 
       // The current track is killed by not enqueuing into the next activeQueue.
       break;

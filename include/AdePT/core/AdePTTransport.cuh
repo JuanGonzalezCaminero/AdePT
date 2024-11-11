@@ -191,11 +191,18 @@ __global__ void FillFromDeviceBuffer(int numLeaked, LeakedTracks all, adeptint::
 // Finish iteration: refresh track managers and fill statistics.
 __global__ void FinishIteration(AllTrackManagers all, Stats *stats, AdeptScoring *scoring)
 {
-  // Update track manager stats
   for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
+    // Update track manager stats
     all.trackmgr[i]->refresh_stats();
     stats->mgr_stats[i]    = all.trackmgr[i]->fStats;
     stats->leakedTracks[i] = all.leakedTracks[i]->size();
+
+    // Clear free slots queue if needed (If there is a chance that it will become full in the next 
+    // step)
+    if(all.trackmgr[i]->fStats.fInFlight >= all.freeSlots[i]->remaining())
+    {
+      all.freeSlots[i]->clearUnused();
+    }
   }
   // Update hit buffer stats
   adept_scoring::EndOfIterationGPU(scoring);
@@ -252,6 +259,7 @@ void CopySurfaceModelToGPU()
 GPUstate *InitializeGPU(adeptint::TrackBuffer &buffer, int capacity, int maxbatch)
 {
   using TrackData   = adeptint::TrackData;
+  using Queue = adept::mpmc_bounded_queue<int>;
   auto gpuState_ptr = new GPUstate;
   auto &gpuState    = *gpuState_ptr;
   // Allocate track managers, streams and synchronization events.
@@ -265,6 +273,19 @@ GPUstate *InitializeGPU(adeptint::TrackBuffer &buffer, int capacity, int maxbatc
     gpuState.particles[i].trackmgr = gpuState.allmgr_d.trackmgr[i];
     COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.allmgr_d.leakedTracks[i], kQueueSize));
     gpuState.particles[i].leakedTracks = gpuState.allmgr_d.leakedTracks[i];
+
+
+    // TEST //////////////////////////////////////////////////////////////////
+    
+    COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.allmgr_d.freeSlots[i], Queue::SizeOfInstance(capacity)));
+
+    // kernel to construct on device
+    adept::device_impl_mpmc::construct_mpmc_bounded_queue<int><<<1,1>>>(gpuState.allmgr_d.freeSlots[i], capacity);
+
+    gpuState.particles[i].freeSlots = gpuState.allmgr_d.freeSlots[i];
+    
+    // TEST  END /////////////////////////////////////////////////////////////
+
 
     COPCORE_CUDA_CHECK(cudaStreamCreate(&gpuState.particles[i].stream));
     COPCORE_CUDA_CHECK(cudaEventCreate(&gpuState.particles[i].event));
@@ -339,6 +360,7 @@ void ShowerGPU(IntegrationLayer &integration, int event, adeptint::TrackBuffer &
 
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
   Secondaries secondaries{gpuState.allmgr_d.trackmgr[0], gpuState.allmgr_d.trackmgr[1], gpuState.allmgr_d.trackmgr[2]};
+  FreeSlots freeSlots{gpuState.allmgr_d.freeSlots[0], gpuState.allmgr_d.freeSlots[1], gpuState.allmgr_d.freeSlots[2]};
   ParticleType &electrons = gpuState.particles[ParticleType::Electron];
   ParticleType &positrons = gpuState.particles[ParticleType::Positron];
   ParticleType &gammas    = gpuState.particles[ParticleType::Gamma];
@@ -416,7 +438,7 @@ void ShowerGPU(IntegrationLayer &integration, int event, adeptint::TrackBuffer &
           electrons.trackmgr, gpuState.hepEMBuffers_d.electronsHepEm);
       ElectronRelocation<true><<<transportBlocks, TransportThreads, 0, electrons.stream>>>(electrons.trackmgr);
       ElectronInteractions<true, AdeptScoring><<<transportBlocks, TransportThreads, 0, electrons.stream>>>(
-          electrons.trackmgr, gpuState.hepEMBuffers_d.electronsHepEm, secondaries, electrons.leakedTracks, scoring_dev,
+          electrons.trackmgr, gpuState.hepEMBuffers_d.electronsHepEm, secondaries, freeSlots, electrons.leakedTracks, scoring_dev,
           VolAuxArray::GetInstance().fAuxData_dev);
 #endif
       COPCORE_CUDA_CHECK(cudaEventRecord(electrons.event, electrons.stream));
@@ -443,7 +465,7 @@ void ShowerGPU(IntegrationLayer &integration, int event, adeptint::TrackBuffer &
           positrons.trackmgr, gpuState.hepEMBuffers_d.positronsHepEm);
       ElectronRelocation<false><<<transportBlocks, TransportThreads, 0, positrons.stream>>>(positrons.trackmgr);
       ElectronInteractions<false, AdeptScoring><<<transportBlocks, TransportThreads, 0, positrons.stream>>>(
-          positrons.trackmgr, gpuState.hepEMBuffers_d.positronsHepEm, secondaries, positrons.leakedTracks, scoring_dev,
+          positrons.trackmgr, gpuState.hepEMBuffers_d.positronsHepEm, secondaries, freeSlots, positrons.leakedTracks, scoring_dev,
           VolAuxArray::GetInstance().fAuxData_dev);
 #endif
       COPCORE_CUDA_CHECK(cudaEventRecord(positrons.event, positrons.stream));
@@ -468,7 +490,7 @@ void ShowerGPU(IntegrationLayer &integration, int event, adeptint::TrackBuffer &
       GammaRelocation<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(gammas.trackmgr, gammas.leakedTracks,
                                                                                VolAuxArray::GetInstance().fAuxData_dev);
       GammaInteractions<AdeptScoring><<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
-          gammas.trackmgr, gpuState.hepEMBuffers_d.gammasHepEm, secondaries, scoring_dev,
+          gammas.trackmgr, gpuState.hepEMBuffers_d.gammasHepEm, secondaries, freeSlots, scoring_dev,
           VolAuxArray::GetInstance().fAuxData_dev);
 #endif
       COPCORE_CUDA_CHECK(cudaEventRecord(gammas.event, gammas.stream));

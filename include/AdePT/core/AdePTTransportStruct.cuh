@@ -9,6 +9,7 @@
 
 #include "Track.cuh"
 #include <AdePT/base/TrackManager.cuh>
+#include <AdePT/base/mpmc_bounded_queue.h>
 
 #include <G4HepEmData.hh>
 #include <G4HepEmParameters.hh>
@@ -43,6 +44,12 @@ struct Secondaries {
   adept::TrackManager<Track> *gammas;
 };
 
+struct FreeSlots {
+  adept::mpmc_bounded_queue<int> *electrons;
+  adept::mpmc_bounded_queue<int> *positrons;
+  adept::mpmc_bounded_queue<int> *gammas;
+};
+
 struct LeakedTracks {
   MParrayTracks *leakedElectrons;
   MParrayTracks *leakedPositrons;
@@ -52,6 +59,7 @@ struct LeakedTracks {
 struct ParticleType {
   adept::TrackManager<Track> *trackmgr;
   MParrayTracks *leakedTracks;
+  adept::mpmc_bounded_queue<int> *freeSlots;
   cudaStream_t stream;
   cudaEvent_t event;
 
@@ -68,6 +76,7 @@ struct ParticleType {
 struct AllTrackManagers {
   adept::TrackManager<Track> *trackmgr[ParticleType::NumParticleTypes];
   MParrayTracks *leakedTracks[ParticleType::NumParticleTypes];
+  adept::mpmc_bounded_queue<int> *freeSlots[ParticleType::NumParticleTypes];
 };
 
 #ifdef USE_SPLIT_KERNELS

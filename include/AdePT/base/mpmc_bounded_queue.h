@@ -17,6 +17,10 @@
 #include <AdePT/copcore/CopCore.h>
 
 namespace adept {
+
+template <typename Type>
+class mpmc_bounded_queue;
+
 namespace internal {
 /** @brief Internal data structure to handle the data sequence */
 template <typename Type>
@@ -28,6 +32,15 @@ struct Cell_t {
   Cell_t() {}
 };
 } // namespace internal
+
+namespace device_impl_mpmc {
+
+ template <typename Type>
+ __global__ void construct_mpmc_bounded_queue(void *addr, size_t capacity)
+ {
+  mpmc_bounded_queue<Type>::MakeInstanceAt(capacity, addr);
+ }
+}
 
 /** @brief Class MPMC bounded queue */
 template <typename Type>
@@ -116,6 +129,37 @@ public:
     for (int i = 0; i < fCapacity; ++i)
       fBuffer[i].fSequence.store(i);
   }
+
+  /** @brief Shifts used cells to the beginning of the queue. 
+   * This function is not thread-safe and should only be run with 1 thread
+   */
+  __host__ __device__ __forceinline__ void clearUnused()
+  {
+    printf("Clear unused\n");
+    int pos = fDequeue.load();
+    int nused = fNstored.load();
+    // Copy the used cells to the beginning of the queue
+    for (int i = 0; i < nused; ++i)
+    {
+      // Reset the cell before writing into it
+      fBuffer[i].fSequence.store(i);
+      // Read and store the current unread cell (No guarantees, not thread-safe for efficiency)
+      // Read & Store
+      fBuffer[i].fData = fBuffer[pos].fData;
+      // Reset the old cell
+      fBuffer[pos].fSequence.store(pos);
+      // Mark the new cell as used
+      fBuffer[i].fSequence.store(pos + 1);
+      // Update the read index for the next iteration
+      pos++;
+    }
+    // Update the counters
+    fEnqueue.store(nused);
+    fDequeue.store(0);
+  }
+
+  /** @brief Returns the number of remaining free slots */
+  __host__ __device__ __forceinline__ int remaining() const { return fCapacity - fEnqueue.load(); }
 
   /** @brief Size function */
   __host__ __device__ __forceinline__ int size() const { return fNstored.load(); }

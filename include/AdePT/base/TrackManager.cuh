@@ -215,6 +215,12 @@ struct TrackManager {
     fNextTracks   = tmp;
   }
 
+  /// @brief Add a previously freed slot back into the used pool
+  __device__ __forceinline__ void AddSlot(int slot)
+  {
+    fNextTracks->push_back(slot);
+  }
+
   /// @brief Get next free slot.
   __device__ __forceinline__ int NextSlot()
   {

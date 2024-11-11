@@ -182,7 +182,7 @@ __global__ void GammaRelocation(adept::TrackManager<Track> *gammas, MParrayTrack
 
 template <typename Scoring>
 __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGammaTrack *hepEMTracks,
-                                  Secondaries secondaries, Scoring *userScoring, VolAuxData const *auxDataArray)
+                                  Secondaries secondaries, FreeSlots freeSlots, Scoring *userScoring, VolAuxData const *auxDataArray)
 {
   int activeSize = gammas->fActiveTracks->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
@@ -236,9 +236,21 @@ __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGam
       double dirSecondaryEl[3], dirSecondaryPos[3];
       G4HepEmGammaInteractionConversion::SampleDirections(dirPrimary, dirSecondaryEl, dirSecondaryPos, elKinEnergy,
                                                           posKinEnergy, &rnge);
+      
+      ///////////////////////////////////////////////////////////////////
 
-      Track &electron = secondaries.electrons->NextTrack();
-      Track &positron = secondaries.positrons->NextTrack();
+      int freeSlotEl{-1};
+      int freeSlotPs{-1};
+      Track &electron = freeSlots.electrons->dequeue(freeSlotEl) ? (*secondaries.electrons)[freeSlotEl] : secondaries.electrons->NextTrack();
+      Track &positron = freeSlots.positrons->dequeue(freeSlotPs) ? (*secondaries.positrons)[freeSlotPs] : secondaries.positrons->NextTrack();
+      // In case we are re-using a track, add it to the next iteration list
+      if(freeSlotEl >= 0) secondaries.electrons->AddSlot(freeSlotEl);
+      if(freeSlotPs >= 0) secondaries.positrons->AddSlot(freeSlotPs);
+
+      // Track &electron = secondaries.electrons->NextTrack();
+      // Track &positron = secondaries.positrons->NextTrack();
+
+      ///////////////////////////////////////////////////////////////////
 
       adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 1, /*numPositrons*/ 1, /*numGammas*/ 0);
 
@@ -274,7 +286,18 @@ __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGam
       const double energyEl = currentTrack.eKin - newEnergyGamma;
       if (energyEl > LowEnergyThreshold) {
         // Create a secondary electron and sample/compute directions.
-        Track &electron = secondaries.electrons->NextTrack();
+
+        ///////////////////////////////////////////////////////////////////
+
+        int freeSlot{-1};
+        Track &electron = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
+        // In case we are re-using a track, add it to the next iteration list
+        if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+
+        // Track &electron = secondaries.electrons->NextTrack();
+
+        ///////////////////////////////////////////////////////////////////
+
         adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 1, /*numPositrons*/ 0, /*numGammas*/ 0);
 
         electron.InitAsSecondary(currentTrack.pos, currentTrack.navState, currentTrack.globalTime);
@@ -343,7 +366,18 @@ __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGam
       const double photoElecE = currentTrack.eKin - edep;
       if (photoElecE > theLowEnergyThreshold) {
         // Create a secondary electron and sample directions.
-        Track &electron = secondaries.electrons->NextTrack();
+
+        ///////////////////////////////////////////////////////////////////
+
+        int freeSlot{-1};
+        Track &electron = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
+        // In case we are re-using a track, add it to the next iteration list
+        if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+        
+        // Track &electron = secondaries.electrons->NextTrack();
+        
+        ///////////////////////////////////////////////////////////////////
+        
         adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 1, /*numPositrons*/ 0, /*numGammas*/ 0);
 
         double dirGamma[] = {currentTrack.dir.x(), currentTrack.dir.y(), currentTrack.dir.z()};

@@ -152,6 +152,10 @@ struct TrackManager {
       return false;
     }
 
+    // TODO: COMMENT THIS OUT ONCE THE SLOT RE-USE IS WORKING
+
+    printf("Compaction running\n");
+
     constexpr int maxBlocks = 1024;
     constexpr int threads   = 32;
 
@@ -168,6 +172,8 @@ struct TrackManager {
     device_impl_trackmgr::adjust_indices<Track><<<1, 1, 0, stream>>>(fInstance_d, fStats.fStart, next_free);
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(stream));
     return true;
+
+    return false;
   }
 
   /// @brief Host static call to clear the container.
@@ -195,6 +201,7 @@ struct TrackManager {
   __device__ __forceinline__ void refresh_stats()
   {
     if (fNextTracks->size() == 0) {
+      // printf("Finish iteration: Clearing trackmanager for electrons\n");
       clear();
     } else {
       // fStats.fStart is not modified during the transport loop
@@ -215,11 +222,11 @@ struct TrackManager {
     fNextTracks   = tmp;
   }
 
-  /// @brief Add a previously freed slot back into the used pool
-  __device__ __forceinline__ void AddSlot(int slot)
-  {
-    fNextTracks->push_back(slot);
-  }
+  // /// @brief Add a previously freed slot back into the used pool
+  // __device__ __forceinline__ void AddSlot(int slot)
+  // {
+  //   fNextTracks->push_back(slot);
+  // }
 
   /// @brief Get next free slot.
   __device__ __forceinline__ int NextSlot()
@@ -231,7 +238,7 @@ struct TrackManager {
   }
 
   /// @brief Main interface to get the next unused track on device.
-  __device__ __forceinline__ Track &NextTrack()
+  __device__ __forceinline__ Track &NextTrack(bool debug=false)
   {
     int slot = NextSlot();
     if (slot == -1) {
@@ -239,6 +246,8 @@ struct TrackManager {
     }
     assert(slot < fCapacity);
     fNextTracks->push_back(slot);
+    // if(debug)
+    //   printf("New: %d, Max: %d\n", slot, fCapacity);
     return fBuffer[slot];
   }
 

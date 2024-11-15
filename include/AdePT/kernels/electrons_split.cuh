@@ -302,6 +302,8 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       currentTrack.CopyTo(trackdata, Pdg);
       if (leak)
         leakedQueue->push_back(trackdata);
+        // Free the slot to reuse
+        // TODO
       else
         electrons->fNextTracks->push_back(slot);
     };
@@ -385,9 +387,10 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
       // Free this slot
 
       if (IsElectron) {
+        // printf("In: %d\n", slot);
         freeSlots.electrons->enqueue(slot);
       }
-      // else{
+      // else {
       //   freeSlots.positrons->enqueue(slot);
       // }
       
@@ -468,9 +471,16 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
 
       // Try to get a free track if it exists:
       int freeSlot{-1};
-      Track &secondary = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
+      Track &secondary = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack(true);
       // In case we are re-using a track, add it to the next iteration list
-      if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+      // if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+      if(freeSlot >= 0) 
+      {
+        // printf("Out: %d\n", freeSlot);
+        secondaries.electrons->fNextTracks->push_back(freeSlot);
+      }
+      // No need to reduce number of used tracks (In this case, we run out of space if we have more 
+      // tracks in flight than the buffer size)
 
       // Track &secondary = secondaries.electrons->NextTrack();
 
@@ -486,6 +496,23 @@ static __global__ void ElectronInteractions(adept::TrackManager<Track> *electron
 
       currentTrack.eKin -= deltaEkin;
       currentTrack.dir.Set(dirPrimary[0], dirPrimary[1], dirPrimary[2]);
+
+      ///////////////////////////////////////////
+      // Reset the variables only used with split kernels (They are initialized at the start of the next step anyway)
+      // secondary.nextState.Clear();
+      // secondary.preStepNavState.Clear();
+      // secondary.preStepPos.Set(0, 0, 0);
+      // secondary.preStepDir.Set(0, 0, 0);
+      // secondary.newRNG = currentTrack.newRNG;
+      // secondary.preStepEKin = 0;
+      // secondary.geometryStepLength = 0;
+      // secondary.safety = 0;
+      // secondary.hitsurfID = 0;
+      // secondary.propagated = 0;
+      // secondary.restrictedPhysicalStepLength = false;
+      // secondary.stopped = false;
+      ///////////////////////////////////////////
+
       survive();
       break;
     }

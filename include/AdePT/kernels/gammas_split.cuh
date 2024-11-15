@@ -239,16 +239,16 @@ __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGam
       
       ///////////////////////////////////////////////////////////////////
 
-      int freeSlotEl{-1};
-      int freeSlotPs{-1};
-      Track &electron = freeSlots.electrons->dequeue(freeSlotEl) ? (*secondaries.electrons)[freeSlotEl] : secondaries.electrons->NextTrack();
-      Track &positron = freeSlots.positrons->dequeue(freeSlotPs) ? (*secondaries.positrons)[freeSlotPs] : secondaries.positrons->NextTrack();
-      // In case we are re-using a track, add it to the next iteration list
-      if(freeSlotEl >= 0) secondaries.electrons->AddSlot(freeSlotEl);
-      if(freeSlotPs >= 0) secondaries.positrons->AddSlot(freeSlotPs);
+      // int freeSlotEl{-1};
+      // int freeSlotPs{-1};
+      // Track &electron = freeSlots.electrons->dequeue(freeSlotEl) ? (*secondaries.electrons)[freeSlotEl] : secondaries.electrons->NextTrack();
+      // Track &positron = freeSlots.positrons->dequeue(freeSlotPs) ? (*secondaries.positrons)[freeSlotPs] : secondaries.positrons->NextTrack();
+      // // In case we are re-using a track, add it to the next iteration list
+      // if(freeSlotEl >= 0) secondaries.electrons->AddSlot(freeSlotEl);
+      // if(freeSlotPs >= 0) secondaries.positrons->AddSlot(freeSlotPs);
 
-      // Track &electron = secondaries.electrons->NextTrack();
-      // Track &positron = secondaries.positrons->NextTrack();
+      Track &electron = secondaries.electrons->NextTrack(true);
+      Track &positron = secondaries.positrons->NextTrack();
 
       ///////////////////////////////////////////////////////////////////
 
@@ -289,12 +289,12 @@ __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGam
 
         ///////////////////////////////////////////////////////////////////
 
-        int freeSlot{-1};
-        Track &electron = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
-        // In case we are re-using a track, add it to the next iteration list
-        if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+        // int freeSlot{-1};
+        // Track &electron = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
+        // // In case we are re-using a track, add it to the next iteration list
+        // if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
 
-        // Track &electron = secondaries.electrons->NextTrack();
+        Track &electron = secondaries.electrons->NextTrack(true);
 
         ///////////////////////////////////////////////////////////////////
 
@@ -369,12 +369,12 @@ __global__ void GammaInteractions(adept::TrackManager<Track> *gammas, G4HepEmGam
 
         ///////////////////////////////////////////////////////////////////
 
-        int freeSlot{-1};
-        Track &electron = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
-        // In case we are re-using a track, add it to the next iteration list
-        if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
+        // int freeSlot{-1};
+        // Track &electron = freeSlots.electrons->dequeue(freeSlot) ? (*secondaries.electrons)[freeSlot] : secondaries.electrons->NextTrack();
+        // // In case we are re-using a track, add it to the next iteration list
+        // if(freeSlot >= 0) secondaries.electrons->AddSlot(freeSlot);
         
-        // Track &electron = secondaries.electrons->NextTrack();
+        Track &electron = secondaries.electrons->NextTrack(true);
         
         ///////////////////////////////////////////////////////////////////
         

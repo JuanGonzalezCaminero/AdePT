@@ -121,7 +121,7 @@ __global__ void InitTracks(adeptint::TrackData *trackinfo, int ntracks, int star
     };
     assert(trackmgr != nullptr && "Unsupported pdg type");
 
-    Track &track   = trackmgr->NextTrack();
+    Track &track   = (trackinfo[i].pdg != 11) ? trackmgr->NextTrack() : trackmgr->NextTrack(true);
     track.parentID = trackinfo[i].parentID;
 
     track.rngState.SetSeed(1234567 * event + startTrack + i);
@@ -197,10 +197,22 @@ __global__ void FinishIteration(AllTrackManagers all, Stats *stats, AdeptScoring
     stats->mgr_stats[i]    = all.trackmgr[i]->fStats;
     stats->leakedTracks[i] = all.leakedTracks[i]->size();
 
+    // The trackmanager will also be oportunistically cleared if there are no tracks in flight, 
+    // if this happens, clear the free slots queue too
+    // TODO: this is obviously quite expensive to do so another option is to advance the reading position
+    // to the current writing one, this way we will just re-use the cleaning mechanism and this will 
+    // be quite cheap
+    // Some "DiscardCurrentContents" function
+    if (all.trackmgr[i]->fNextTracks->size() == 0) {
+      printf("Clearing free slots queue\n");
+      // all.freeSlots[i]->clear();
+      all.freeSlots[i]->discardCurrent();
+    }
     // Clear free slots queue if needed (If there is a chance that it will become full in the next 
     // step)
     if(all.trackmgr[i]->fStats.fInFlight >= all.freeSlots[i]->remaining())
     {
+      printf("Clearing unused spots\n");
       all.freeSlots[i]->clearUnused();
     }
   }
@@ -276,11 +288,13 @@ GPUstate *InitializeGPU(adeptint::TrackBuffer &buffer, int capacity, int maxbatc
 
 
     // TEST //////////////////////////////////////////////////////////////////
+
+    int queueSize = 1048576;
     
-    COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.allmgr_d.freeSlots[i], Queue::SizeOfInstance(capacity)));
+    COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.allmgr_d.freeSlots[i], Queue::SizeOfInstance(queueSize)));
 
     // kernel to construct on device
-    adept::device_impl_mpmc::construct_mpmc_bounded_queue<int><<<1,1>>>(gpuState.allmgr_d.freeSlots[i], capacity);
+    adept::device_impl_mpmc::construct_mpmc_bounded_queue<int><<<1,1>>>(gpuState.allmgr_d.freeSlots[i], queueSize);
 
     gpuState.particles[i].freeSlots = gpuState.allmgr_d.freeSlots[i];
     
@@ -562,7 +576,7 @@ void ShowerGPU(IntegrationLayer &integration, int event, adeptint::TrackBuffer &
       if (inFlightParticles == 0) {
         continue;
       }
-
+      // if(i==0) printf("End of transport: Clearing host trackmanager for electrons\n");
       gpuState.allmgr_h.trackmgr[i]->Clear(gpuState.particles[i].stream);
     }
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));

@@ -40,6 +40,12 @@ namespace device_impl_mpmc {
  {
   mpmc_bounded_queue<Type>::MakeInstanceAt(capacity, addr);
  }
+
+ template <typename Type>
+ __device__ void clear_mpmc_bounded_queue(mpmc_bounded_queue<Type> *queue)
+ {
+  queue->clear();
+ }
 }
 
 /** @brief Class MPMC bounded queue */
@@ -156,6 +162,13 @@ public:
     // Update the counters
     fEnqueue.store(nused);
     fDequeue.store(0);
+  }
+
+    /** @brief Size function */
+  __host__ __device__ __forceinline__ void discardCurrent()
+  {
+    fDequeue.store(fEnqueue.load());
+    fNstored.store(0);
   }
 
   /** @brief Returns the number of remaining free slots */

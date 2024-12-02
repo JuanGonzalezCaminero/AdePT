@@ -26,15 +26,6 @@ else()
   return()
 endif()
 
-find_package(ROOT QUIET COMPONENTS Hist RIO)
-if(ROOT_FOUND)
-  include_directories(${ROOT_INCLUDE_DIRS})
-  message(STATUS "ROOT found at: ${ROOT_INCLUDE_DIRS}")
-else()
-  message(STATUS "Disabling AsyncExample (needs ROOT)")
-  return()
-endif()
-
 set(sources_g4
   src/ActionInitialisation.cc
   src/DetectorConstruction.cc
@@ -100,15 +91,15 @@ add_executable(AsyncExample
     ${sources_g4})
 target_include_directories(AsyncExample PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR})
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  #TEMPORARY WORKAROUND
+  ${PROJECT_SOURCE_DIR}/include
+)
 
 target_link_libraries(AsyncExample
   PRIVATE
     ExamplesCommon
     NVTX
-    ROOT::Core
-    ROOT::Hist
-    ROOT::RIO
 )
 
 if(AsyncTransport)

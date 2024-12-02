@@ -8,7 +8,7 @@
 
 #include "Track.cuh"
 #include "TrackTransfer.h"
-#include "SlotManager.cuh"
+#include <AdePT/base/SlotManager.cuh>
 #include "ResourceManagement.h"
 
 #include <G4HepEmData.hh>
@@ -82,7 +82,7 @@ struct GammaInteractions {
     double geometryStepLength;
     double PEmxSec; // Only used for photoelectric process
     unsigned int slot;
-    vecgeom::NavStateIndex preStepNavState;
+    vecgeom::NavigationState preStepNavState;
     vecgeom::Vector3D<Precision> preStepPos;
     vecgeom::Vector3D<Precision> preStepDir;
     double preStepEnergy;

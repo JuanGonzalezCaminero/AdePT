@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2022 CERN
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef ADEPT_INTEGRATION_CUH
-#define ADEPT_INTEGRATION_CUH
+#ifndef ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
+#define ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 
-#include "AdeptIntegration.h"
-
-#include "Track.cuh"
-#include "TrackTransfer.h"
+#include <AdePT/core/CommonStruct.h>
+#include <AdePT/core/AsyncAdePTTransportStruct.hh>
+// #include <AdePT/core/AsyncAdePTTransport.hh>
+#include <AdePT/core/PerEventScoringImpl.cuh>
+#include "AsyncTrack.cuh"
 #include <AdePT/base/SlotManager.cuh>
-#include "ResourceManagement.h"
+#include <AdePT/base/ResourceManagement.cuh>
 
 #include <G4HepEmData.hh>
 #include <G4HepEmParameters.hh>
@@ -97,6 +98,7 @@ struct Secondaries {
   ParticleGenerator gammas;
 };
 
+// Holds the leaked track structs for all three particle types
 struct AllLeaked {
   LeakedTracks leakedElectrons;
   LeakedTracks leakedPositrons;
@@ -115,6 +117,7 @@ struct ParticleQueues {
   void SwapLeakedQueue() { std::swap(leakedTracksCurrent, leakedTracksNext); }
 };
 
+// Holds all information needed to manage in-flight tracks of one type
 struct ParticleType {
   Track *tracks;
   SlotManager *slotManager;
@@ -149,8 +152,8 @@ struct Stats {
   int leakedTracks[ParticleType::NumParticleTypes];
   float queueFillLevel[ParticleType::NumParticleTypes];
   float slotFillLevel;
-  unsigned int perEventInFlight[AdeptIntegration::kMaxThreads];
-  unsigned int perEventLeaked[AdeptIntegration::kMaxThreads];
+  unsigned int perEventInFlight[kMaxThreads];
+  unsigned int perEventLeaked[kMaxThreads];
   unsigned int hitBufferOccupancy;
 };
 

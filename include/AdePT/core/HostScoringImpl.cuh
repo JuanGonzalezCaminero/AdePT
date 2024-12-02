@@ -63,7 +63,8 @@ __device__ __forceinline__ void Copy3DVector(vecgeom::Vector3D<Precision> const 
 }
 
 /// @brief Copy the hits buffer to the host
-void CopyHitsToHost(HostScoring &hostScoring, HostScoring *hostScoring_dev, cudaStream_t &stream)
+void CopyHitsToHost(HostScoring &hostScoring, HostScoring::Stats &statsHost, HostScoring *hostScoring_dev,
+                    cudaStream_t &stream)
 {
   // Move the start of the hits buffer on GPU
   UpdateBufferStartGPU<<<1, 1, 0, stream>>>(hostScoring_dev, hostScoring.fStats.fNextFreeHit);
@@ -80,7 +81,8 @@ void CopyHitsToHost(HostScoring &hostScoring, HostScoring *hostScoring_dev, cuda
 
 /// @brief Check if the buffer is filled over a certain capacity and copy the hits to the host if so
 /// @return True if the buffer was transferred to the host
-bool CheckAndFlush(HostScoring &hostScoring, HostScoring *hostScoring_dev, cudaStream_t &stream)
+bool CheckAndFlush(HostScoring &hostScoring, HostScoring::Stats &statsHost, HostScoring *hostScoring_dev,
+                   cudaStream_t &stream)
 {
   hostScoring.fStepsSinceLastFlush++;
   float aBufferUsage = (float)hostScoring.fStats.fUsedSlots / hostScoring.fBufferCapacity;
@@ -223,7 +225,7 @@ inline void EndOfIteration(HostScoring &hostScoring, HostScoring *hostScoring_de
   // COPCORE_CUDA_CHECK(cudaStreamSynchronize(stream));
 
   // Check if we need to flush the hits buffer
-  if (CheckAndFlush(hostScoring, hostScoring_dev, stream)) {
+  if (CheckAndFlush(hostScoring, hostScoring.fStats, hostScoring_dev, stream)) {
     // Synchronize the stream used to copy back the hits
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(stream));
     // Process the hits on CPU
@@ -238,8 +240,7 @@ inline void EndOfTransport(HostScoring &hostScoring, HostScoring *hostScoring_de
                            IntegrationLayer &integration)
 {
   // Transfer back scoring.
-  CopyHitsToHost(hostScoring, hostScoring_dev, stream);
-  ResetBufferStatsGPU<<<1, 1, 0, stream>>>(hostScoring_dev);
+  CopyHitsToHost(hostScoring, hostScoring.fStats, hostScoring_dev, stream);
   // Transfer back the global counters
   // scoring->fGlobalCounters_dev->numKilled = inFlight;
   CopyGlobalCountersToHost(hostScoring, stream);

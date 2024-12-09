@@ -254,6 +254,20 @@ __device__ void AccountProduced(AsyncAdePT::PerEventScoring *scoring, int num_el
   atomicAdd(&scoring->fGlobalCounters.numGammas, num_gam);
 }
 
+
+template <>
+inline void EndOfTransport(AsyncAdePT::PerEventScoring &scoring, AsyncAdePT::PerEventScoring *, cudaStream_t *, IntegrationLayer *)
+{
+  scoring.CopyToHost();
+  scoring.ClearGPU();
+  fGPUNetEnergy[threadId] = 0.;
+
+  if (fDebugLevel >= 2) {
+    G4cout << "\n\tScoring for event " << eventId << G4endl;
+    scoring.Print();
+  }
+}
+
 } // namespace adept_scoring
 
 #endif

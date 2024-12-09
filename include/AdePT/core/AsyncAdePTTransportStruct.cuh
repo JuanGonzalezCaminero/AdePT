@@ -4,7 +4,8 @@
 #ifndef ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 #define ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 
-#include "AdeptIntegration.h"
+#include <AdePT/core/AsyncAdePTTransport.hh>
+#include <AdePT/core/PerEventScoringImpl.cuh>
 
 #include "Track.cuh"
 #include <AdePT/base/SlotManager.cuh>
@@ -150,8 +151,8 @@ struct Stats {
   int leakedTracks[ParticleType::NumParticleTypes];
   float queueFillLevel[ParticleType::NumParticleTypes];
   float slotFillLevel;
-  unsigned int perEventInFlight[AdeptIntegration::kMaxThreads];
-  unsigned int perEventLeaked[AdeptIntegration::kMaxThreads];
+  unsigned int perEventInFlight[AsyncAdePTTransport::kMaxThreads];
+  unsigned int perEventLeaked[AsyncAdePTTransport::kMaxThreads];
   unsigned int hitBufferOccupancy;
 };
 

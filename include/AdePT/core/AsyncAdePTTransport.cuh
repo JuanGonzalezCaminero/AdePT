@@ -100,7 +100,10 @@ bool InitializeField(double bz)
   return true;
 }
 
-
+void FlushScoring(AdePTScoring &scoring)
+{
+  adept_scoring::EndOfTransport<IntegrationLayer>(scoring, nullptr, nullptr, nullptr);
+}
 }
 
 ///////////////////////
@@ -485,7 +488,8 @@ __global__ void InitSlotManagers(SlotManager *mgr, std::size_t N)
 /// try again after some wait time or with less transport slots.
 void AsyncAdePTTransport::InitializeGPU()
 {
-  auto gpuStateTmp   = std::make_unique<GPUstate>();
+  // auto gpuStateTmp   = std::make_unique<GPUstate>();
+  auto gpuStateTmp   = new GPUstate();
   GPUstate &gpuState = *gpuStateTmp;
 
   // Allocate structures to manage tracks of an implicit type:
@@ -565,10 +569,10 @@ void AsyncAdePTTransport::InitializeGPU()
   // init scoring structures
   gpuMalloc(gpuState.fScoring_dev, fNThread);
 
-  fScoring.clear();
-  fScoring.reserve(fNThread);
+  fScoring->clear();
+  fScoring->reserve(fNThread);
   for (unsigned int i = 0; i < fNThread; ++i) {
-    fScoring.emplace_back(gpuState.fScoring_dev + i);
+    fScoring->emplace_back(gpuState.fScoring_dev + i);
   }
   gpuState.fHitScoring.reset(new HitScoring(fScoringCapacity, fNThread));
 
@@ -586,7 +590,8 @@ void AsyncAdePTTransport::InitializeGPU()
     partType.tracks = trackStorage_dev;
   }
 
-  fGPUstate = std::move(gpuStateTmp);
+  // fGPUstate = std::move(gpuStateTmp);
+  fGPUstate = gpuStateTmp;
 }
 
 void AsyncAdePTTransport::FreeGPU()
@@ -600,6 +605,9 @@ void AsyncAdePTTransport::FreeGPU()
 
   // Free resources.
   fGPUstate.reset();
+
+  // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport, 
+  // check if there's any further cleanup required
 
   // Free G4HepEm data
   FreeG4HepEmData(AsyncAdePTTransport::fg4hepem_state->fData);

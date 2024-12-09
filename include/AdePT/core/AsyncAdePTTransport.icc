@@ -44,6 +44,7 @@ namespace async_adept_impl
 {
 bool InitializeField(double);
 static G4HepEmState *InitG4HepEm();
+void FlushScoring(AdePTScoring &);
 }
 
 namespace AsyncAdePT {
@@ -90,17 +91,27 @@ std::ostream &operator<<(std::ostream &stream, TrackDataWithIDs const &track)
 
 template <typename IntegrationLayer>
 AsyncAdePTTransport<IntegrationLayer>::AsyncAdePTTransport(AdePTConfiguration &configuration)
+: fNThread{configuration.GetNumThreads()},
+  fTrackCapacity{1024 * 1024 * configuration.GetMillionsOfTrackSlots()},
+  fScoringCapacity{1024 * 1024 * configuration.GetMillionsOfHitSlots()},
+  fDebugLevel{0},
+  fIntegrationLayerObjects(fNThread),
+  fEventStates(fNThread),
+  fGPUNetEnergy(fNThread, 0.0),
+  fTrackInAllRegions{configuration.GetTrackInAllRegions()},
+  fGPURegionNames{configuration.GetGPURegionNames()},
+  fCUDAStackLimit{configuration.GetCUDAStackLimit()}
 {
-  fNThread = configuration.GetNumThreads();
-  fTrackCapacity = 1024 * 1024 * configuration.GetMillionsOfTrackSlots();
-  fScoringCapacity = 1024 * 1024 * configuration.GetMillionsOfHitSlots();
-  fDebugLevel = 0; // TODO: Add this to the configuration
-  fIntegrationLayerObjects(fNThread);
-  fEventStates(fNThread);
-  fGPUNetEnergy = std::vector<double>(fNThread, 0.0);
-  fTrackInAllRegions = configuration.GetTrackInAllRegions();
-  fGPURegionNames = configuration.GetGPURegionNames();
-  fCUDAStackLimit = configuration.GetCUDAStackLimit();
+  // fNThread = configuration.GetNumThreads();
+  // fTrackCapacity = 1024 * 1024 * configuration.GetMillionsOfTrackSlots();
+  // fScoringCapacity = 1024 * 1024 * configuration.GetMillionsOfHitSlots();
+  // fDebugLevel = 0; // TODO: Add this to the configuration
+  // fIntegrationLayerObjects = std::vector<double>(fNThread);
+  // fEventStates = std::vector<double>(fNThread);
+  // fGPUNetEnergy = std::vector<double>(fNThread, 0.0);
+  // fTrackInAllRegions = configuration.GetTrackInAllRegions();
+  // fGPURegionNames = configuration.GetGPURegionNames();
+  // fCUDAStackLimit = configuration.GetCUDAStackLimit();
 
   if (fNThread > kMaxThreads)
     throw std::invalid_argument("AsyncAdePTTransport limited to " + std::to_string(kMaxThreads) + " threads");
@@ -310,16 +321,10 @@ void AsyncAdePTTransport<IntegrationLayer>::Flush(G4int threadId, G4int eventId)
   }
 
   if (tracks.empty()) {
-    AsyncAdePT::PerEventScoring &scoring = fScoring[threadId];
-    scoring.CopyToHost();
-    scoring.ClearGPU();
-    fGPUNetEnergy[threadId] = 0.;
+    async_adept_impl::FlushScoring(*fScoring[threadId]);
 
-    if (fDebugLevel >= 2) {
-      G4cout << "\n\tScoring for event " << eventId << G4endl;
-      scoring.Print();
-    }
-
+    // TODO: Most likely this needs to go to AsyncAdePTTransport in a function that 
+    // we will forward-declare here (Otherwise AdePTScoring is undefined)
     fEventStates[threadId].store(EventState::ScoringRetrieved, std::memory_order_release);
   }
 

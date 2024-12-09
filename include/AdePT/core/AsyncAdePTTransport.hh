@@ -67,8 +67,12 @@ private:
   int fDebugLevel{1};               ///< Debug level
   int fCUDAStackLimit{0};                              ///< CUDA device stack limit
   std::vector<IntegrationLayer> fIntegrationLayerObjects;
-  std::unique_ptr<GPUstate> fGPUstate;               ///< CUDA state placeholder
-  std::vector<AdePTScoring> fScoring;             ///< User scoring objects per G4 worker
+  // We can't use a unique_ptr because we can't have the definition of GPUState
+  // in a file compiled by gcc
+  GPUstate *fGPUstate;               ///< CUDA state placeholder
+  // We need to use pointers to the scoring objects because we can't have the complete definition 
+  // in a file compiled by gcc
+  std::vector<AdePTScoring*> fScoring;               ///< User scoring objects per G4 worker
   std::unique_ptr<TrackBuffer> fBuffer{nullptr};     ///< Buffers for transferring tracks between host and device
   std::unique_ptr<G4HepEmState> fg4hepem_state;      ///< The HepEm state singleton
   std::thread fGPUWorker;                            ///< Thread to manage GPU

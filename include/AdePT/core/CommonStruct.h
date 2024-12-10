@@ -16,6 +16,7 @@
 #include <shared_mutex>
 #include <new>
 #include <vector>
+#include <thread>
 
 
 // Common data structures used by the integration with Geant4
@@ -141,7 +142,27 @@ struct TrackBuffer {
   /// @brief Create a handle with lock for tracks that go to the device.
   /// Create a shared_lock and a reference to a track
   /// @return TrackHandle with lock and reference to track slot.
-  TrackHandle createToDeviceSlot();
+  // TrackHandle createToDeviceSlot();
+  TrackHandle createToDeviceSlot()
+  {
+    bool warningIssued = false;
+    while (true) {
+      auto &toDevice = getActiveBuffer();
+      std::shared_lock lock{toDevice.mutex};
+      const auto slot = toDevice.nTrack.fetch_add(1, std::memory_order_relaxed);
+
+      if (slot < toDevice.maxTracks)
+        return TrackHandle{toDevice.tracks[slot], std::move(lock)};
+      else {
+        if (!warningIssued) {
+          std::cerr << __FILE__ << ':' << __LINE__ << " Contention in to-device queue; thread sleeping" << std::endl;
+          warningIssued = true;
+        }
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(1ms);
+      }
+    }
+  }
 
   struct FromDeviceHandle {
     std::vector<TrackDataWithIDs> &tracks;

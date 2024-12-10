@@ -3,8 +3,6 @@
 
 #include <AdePT/core/AsyncAdePTTransport.hh>
 
-#include <AdePT/core/CommonStruct.h>
-
 #include <AdePT/integration/AdePTGeant4Integration.hh>
 
 #include <VecGeom/management/BVHManager.h>
@@ -49,26 +47,26 @@ void FlushScoring(AdePTScoring &);
 
 namespace AsyncAdePT {
 
-TrackBuffer::TrackHandle TrackBuffer::createToDeviceSlot()
-{
-  bool warningIssued = false;
-  while (true) {
-    auto &toDevice = getActiveBuffer();
-    std::shared_lock lock{toDevice.mutex};
-    const auto slot = toDevice.nTrack.fetch_add(1, std::memory_order_relaxed);
+// TrackBuffer::TrackHandle TrackBuffer::createToDeviceSlot()
+// {
+//   bool warningIssued = false;
+//   while (true) {
+//     auto &toDevice = getActiveBuffer();
+//     std::shared_lock lock{toDevice.mutex};
+//     const auto slot = toDevice.nTrack.fetch_add(1, std::memory_order_relaxed);
 
-    if (slot < toDevice.maxTracks)
-      return TrackHandle{toDevice.tracks[slot], std::move(lock)};
-    else {
-      if (!warningIssued) {
-        std::cerr << __FILE__ << ':' << __LINE__ << " Contention in to-device queue; thread sleeping" << std::endl;
-        warningIssued = true;
-      }
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(1ms);
-    }
-  }
-}
+//     if (slot < toDevice.maxTracks)
+//       return TrackHandle{toDevice.tracks[slot], std::move(lock)};
+//     else {
+//       if (!warningIssued) {
+//         std::cerr << __FILE__ << ':' << __LINE__ << " Contention in to-device queue; thread sleeping" << std::endl;
+//         warningIssued = true;
+//       }
+//       using namespace std::chrono_literals;
+//       std::this_thread::sleep_for(1ms);
+//     }
+//   }
+// }
 
 namespace {
 template <typename T>
@@ -91,9 +89,9 @@ std::ostream &operator<<(std::ostream &stream, TrackDataWithIDs const &track)
 
 template <typename IntegrationLayer>
 AsyncAdePTTransport<IntegrationLayer>::AsyncAdePTTransport(AdePTConfiguration &configuration)
-: fNThread{configuration.GetNumThreads()},
-  fTrackCapacity{1024 * 1024 * configuration.GetMillionsOfTrackSlots()},
-  fScoringCapacity{1024 * 1024 * configuration.GetMillionsOfHitSlots()},
+: fNThread{(ushort)configuration.GetNumThreads()},
+  fTrackCapacity{(uint)(1024 * 1024 * configuration.GetMillionsOfTrackSlots())},
+  fScoringCapacity{(uint)(1024 * 1024 * configuration.GetMillionsOfHitSlots())},
   fDebugLevel{0},
   fIntegrationLayerObjects(fNThread),
   fEventStates(fNThread),
@@ -125,7 +123,7 @@ AsyncAdePTTransport<IntegrationLayer>::AsyncAdePTTransport(AdePTConfiguration &c
   //   COPCORE_CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, cudaStackSize));
   // }
 
-  AsyncAdePTTransport::FullInit();
+  AsyncAdePTTransport::Initialize();
 }
 
 template <typename IntegrationLayer>
@@ -191,7 +189,7 @@ bool AsyncAdePTTransport<IntegrationLayer>::InitializePhysics()
 }
 
 template <typename IntegrationLayer>
-void AsyncAdePTTransport<IntegrationLayer>::FullInit()
+void AsyncAdePTTransport<IntegrationLayer>::Initialize()
 {
   const auto numVolumes = vecgeom::GeoManager::Instance().GetRegisteredVolumesCount();
   if (numVolumes == 0) throw std::runtime_error("AsyncAdePTTransport::Initialize: Number of geometry volumes is zero.");

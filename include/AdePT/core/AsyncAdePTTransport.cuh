@@ -1,10 +1,21 @@
 // SPDX-FileCopyrightText: 2022 CERN
 // SPDX-License-Identifier: Apache-2.0
 
-#include "AsyncAdePTTransport.hh"
-#include "AsyncAdePTTransportStruct.cuh"
+#ifndef ASYNC_ADEPT_TRANSPORT_CUH
+#define ASYNC_ADEPT_TRANSPORT_CUH
 
-#include "TrackTransfer.h"
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+// TODO: This include can't be here (because it also includes the implementation, and this 
+// can't be compiled with nvcc, all implementations of AsyncAdePTTransport members need to become 
+// free functions)
+// #include <AdePT/core/AsyncAdePTTransport.hh>
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+#include <AdePT/core/AsyncAdePTTransportStruct.cuh>
+
+#include <AdePT/core/CommonStruct.h>
 
 #include <VecGeom/base/Config.h>
 #ifdef VECGEOM_ENABLE_CUDA
@@ -45,8 +56,8 @@
 #include <stdexcept>
 #include <type_traits>
 
-#include "electrons.cuh"
-#include "gammas.cuh"
+#include <AdePT/kernels/electrons_async.cuh>
+#include <AdePT/kernels/gammas_async.cuh>
 
 #include <AdePT/benchmarking/NVTX.h>
 
@@ -55,8 +66,7 @@ using namespace AsyncAdePT;
 using AdePTScoring = PerEventScoring;
 
 /// WIP: Free functions implementing the CUDA parts
-namespace async_adept_impl
-{
+namespace async_adept_impl {
 
 static G4HepEmState *InitG4HepEm()
 {
@@ -104,389 +114,12 @@ void FlushScoring(AdePTScoring &scoring)
 {
   adept_scoring::EndOfTransport<IntegrationLayer>(scoring, nullptr, nullptr, nullptr);
 }
-}
-
-///////////////////////
-
-
-namespace AsyncAdePT {
-
-__constant__ __device__ struct G4HepEmParameters g4HepEmPars;
-__constant__ __device__ struct G4HepEmData g4HepEmData;
-
-__constant__ __device__ adeptint::VolAuxData *gVolAuxData = nullptr;
-__constant__ __device__ double BzFieldValue               = 0;
-
-/// Transfer volume auxiliary data to GPU
-void InitVolAuxArray(adeptint::VolAuxArray &array)
-{
-  using adeptint::VolAuxData;
-  COPCORE_CUDA_CHECK(cudaMalloc(&array.fAuxData_dev, sizeof(VolAuxData) * array.fNumVolumes));
-  COPCORE_CUDA_CHECK(
-      cudaMemcpy(array.fAuxData_dev, array.fAuxData, sizeof(VolAuxData) * array.fNumVolumes, cudaMemcpyHostToDevice));
-  COPCORE_CUDA_CHECK(cudaMemcpyToSymbol(gVolAuxData, &array.fAuxData_dev, sizeof(VolAuxData *)));
-}
-
-/// Communication with the hit processing thread.
-struct HitProcessingContext {
-  cudaStream_t hitTransferStream;
-  std::condition_variable cv{};
-  std::mutex mutex{};
-  std::atomic_bool keepRunning = true;
-};
-
-/// Initialise the track buffers used to communicate between host and device.
-TrackBuffer::TrackBuffer(unsigned int numToDevice, unsigned int numFromDevice, unsigned short nThread)
-    : fNumToDevice{numToDevice}, fNumFromDevice{numFromDevice}, fromDeviceBuffers(nThread)
-{
-  TrackDataWithIDs *devPtr, *hostPtr;
-  // Double buffer for lock-free host runs:
-  COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, 2 * numToDevice * sizeof(TrackDataWithIDs)));
-  COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numToDevice * sizeof(TrackDataWithIDs)));
-  toDevice_host.reset(hostPtr);
-  toDevice_dev.reset(devPtr);
-
-  COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, numFromDevice * sizeof(TrackDataWithIDs)));
-  COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numFromDevice * sizeof(TrackDataWithIDs)));
-  fromDevice_host.reset(hostPtr);
-  fromDevice_dev.reset(devPtr);
-
-  unsigned int *nFromDevice = nullptr;
-  COPCORE_CUDA_CHECK(cudaMallocHost(&nFromDevice, sizeof(unsigned int)));
-  nFromDevice_host.reset(nFromDevice);
-
-  toDeviceBuffer[0].tracks    = toDevice_host.get();
-  toDeviceBuffer[0].maxTracks = numToDevice;
-  toDeviceBuffer[0].nTrack    = 0;
-  toDeviceBuffer[1].tracks    = toDevice_host.get() + numToDevice;
-  toDeviceBuffer[1].maxTracks = numToDevice;
-  toDeviceBuffer[1].nTrack    = 0;
-}
-
-} // namespace AsyncAdePT
-
-AsyncAdePTTransport::~AsyncAdePTTransport()
-{
-  FreeGPU();
-}
-
-// Kernel to initialize the set of queues per particle type.
-__global__ void InitParticleQueues(ParticleQueues queues, size_t CapacityTransport, size_t CapacityLeaked)
-{
-  adept::MParray::MakeInstanceAt(CapacityTransport, queues.currentlyActive);
-  adept::MParray::MakeInstanceAt(CapacityTransport, queues.nextActive);
-  adept::MParray::MakeInstanceAt(CapacityLeaked, queues.leakedTracksCurrent);
-  adept::MParray::MakeInstanceAt(CapacityLeaked, queues.leakedTracksNext);
-}
-
-// Init a queue at the designated location
-template <typename T>
-__global__ void InitQueue(adept::MParrayT<T> *queue, size_t Capacity)
-{
-  adept::MParrayT<T>::MakeInstanceAt(Capacity, queue);
-}
-
-// Kernel function to initialize tracks comming from a Geant4 buffer
-__global__ void InjectTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks, Secondaries secondaries,
-                             const vecgeom::VPlacedVolume *world, adept::MParrayT<QueueIndexPair> *toBeEnqueued,
-                             uint64_t initialSeed)
-{
-  constexpr double tolerance = 10. * vecgeom::kTolerance;
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < ntracks; i += blockDim.x * gridDim.x) {
-    ParticleGenerator *generator = nullptr;
-    const auto &trackInfo        = trackinfo[i];
-    short queueIndex             = -1;
-    switch (trackInfo.pdg) {
-    case 11:
-      generator  = &secondaries.electrons;
-      queueIndex = ParticleType::Electron;
-      break;
-    case -11:
-      generator  = &secondaries.positrons;
-      queueIndex = ParticleType::Positron;
-      break;
-    case 22:
-      generator  = &secondaries.gammas;
-      queueIndex = ParticleType::Gamma;
-    };
-    assert(generator != nullptr && "Unsupported pdg type");
-
-    // TODO: Delay when not enough slots?
-    const auto slot = generator->NextSlot();
-    Track &track    = generator->InitTrack(slot, initialSeed * trackInfo.eventId + trackInfo.trackId, trackInfo.eKin,
-                                           trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
-                                           static_cast<float>(trackInfo.properTime), trackInfo.position,
-                                           trackInfo.direction, trackInfo.eventId, trackInfo.parentID, trackInfo.threadId);
-    toBeEnqueued->push_back(QueueIndexPair{slot, queueIndex});
-
-    // We locate the pushed point because we run the risk that the
-    // point is not located in the GPU region
-#ifdef NDEBUG
-    constexpr int maxAttempt = 2;
-#else
-    constexpr int maxAttempt = 10;
-#endif
-    for (int attempt = 1; attempt < maxAttempt; ++attempt) {
-      const auto amount = attempt < 5 ? attempt : (attempt - 5) * -1;
-      track.navState.Clear();
-      const auto pushedPosition = track.pos + amount * tolerance * track.dir;
-      BVHNavigator::LocatePointIn(world, pushedPosition, track.navState, true);
-      // The track must be on boundary at this point
-      track.navState.SetBoundaryState(true);
-      // nextState is initialized as needed.
-#ifndef NDEBUG
-      const vecgeom::VPlacedVolume *volume = track.navState.Top();
-      int lvolID                           = volume->GetLogicalVolume()->id();
-      adeptint::VolAuxData const &auxData  = AsyncAdePT::gVolAuxData[lvolID];
-      if (auxData.fGPUregion && attempt == 1) {
-        break;
-      } else {
-        printf("Error [%d, %d]: ev=%d track=%d thread=%d: GPUregion=%d volID=%d "
-               "x=(%18.15f, %18.15f, %18.15f) dir=(%f, %f, %f) "
-               "Safety=%17.15f DistanceToOut=%f shiftAmount=%d\n",
-               blockIdx.x, threadIdx.x, trackInfo.eventId, trackInfo.trackId, trackInfo.threadId, auxData.fGPUregion,
-               volume->id(), pushedPosition[0], pushedPosition[1], pushedPosition[2], track.dir[0], track.dir[1],
-               track.dir[2], BVHNavigator::ComputeSafety(pushedPosition, track.navState),
-               volume->DistanceToOut(track.pos, track.dir), amount);
-        track.navState.Print();
-        if (auxData.fGPUregion) {
-          printf("Success in attempt %d shiftAmount %d\n", attempt, amount);
-          break;
-        }
-      }
-#endif
-    }
-  }
-}
-
-__global__ void EnqueueTracks(AllParticleQueues allQueues, adept::MParrayT<QueueIndexPair> *toBeEnqueued)
-{
-  const auto end = toBeEnqueued->size();
-  for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
-    const auto [slotNumber, particleType] = (*toBeEnqueued)[i];
-    allQueues.queues[particleType].nextActive->push_back(slotNumber);
-  }
-
-  __syncthreads();
-
-  if (threadIdx.x == 0) {
-    toBeEnqueued->clear();
-  }
-}
-
-__device__ unsigned int nFromDevice_dev;
-
-// Copy particles leaked from the GPU region into a compact buffer
-__global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs *fromDevice,
-                                     unsigned int maxFromDeviceBuffer)
-{
-  const auto numElectrons = all.leakedElectrons.fLeakedQueue->size();
-  const auto numPositrons = all.leakedPositrons.fLeakedQueue->size();
-  const auto numGammas    = all.leakedGammas.fLeakedQueue->size();
-  const auto total        = numElectrons + numPositrons + numGammas;
-  if (blockIdx.x == 0 && threadIdx.x == 0) nFromDevice_dev = total < maxFromDeviceBuffer ? total : maxFromDeviceBuffer;
-
-  for (unsigned int i = threadIdx.x + blockIdx.x * blockDim.x; i < total; i += blockDim.x * gridDim.x) {
-    LeakedTracks *leakedTracks = nullptr;
-    unsigned int queueSlot     = 0;
-    int pdg                    = 0;
-
-    if (i < numGammas) {
-      leakedTracks = &all.leakedGammas;
-      queueSlot    = i;
-      pdg          = 22;
-    } else if (i < numGammas + numElectrons) {
-      leakedTracks = &all.leakedElectrons;
-      queueSlot    = i - numGammas;
-      pdg          = 11;
-    } else {
-      leakedTracks = &all.leakedPositrons;
-      queueSlot    = i - numGammas - numElectrons;
-      pdg          = -11;
-    }
-
-    const auto trackSlot = (*leakedTracks->fLeakedQueue)[queueSlot];
-    Track const *const track = leakedTracks->fTracks + trackSlot;
-
-    if (i >= maxFromDeviceBuffer) {
-      // No space to transfer it out
-      leakedTracks->fLeakedQueueNext->push_back(trackSlot);
-    } else {
-      fromDevice[i].position[0]  = track->pos[0];
-      fromDevice[i].position[1]  = track->pos[1];
-      fromDevice[i].position[2]  = track->pos[2];
-      fromDevice[i].direction[0] = track->dir[0];
-      fromDevice[i].direction[1] = track->dir[1];
-      fromDevice[i].direction[2] = track->dir[2];
-      fromDevice[i].eKin         = track->energy;
-      fromDevice[i].globalTime   = track->globalTime;
-      fromDevice[i].localTime    = track->localTime;
-      fromDevice[i].properTime   = track->properTime;
-      fromDevice[i].pdg          = pdg;
-      fromDevice[i].eventId      = track->eventId;
-      fromDevice[i].threadId     = track->threadId;
-
-      leakedTracks->fSlotManager->MarkSlotForFreeing(trackSlot);
-    }
-  }
-}
-
-template <typename... Ts>
-__global__ void FreeSlots1(Ts... slotManagers)
-{
-  (slotManagers->FreeMarkedSlotsStage1(), ...);
-}
-template <typename... Ts>
-__global__ void FreeSlots2(Ts... slotManagers)
-{
-  (slotManagers->FreeMarkedSlotsStage2(), ...);
-}
-
-// Finish iteration: clear queues and fill statistics.
-__global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots,
-                                GammaInteractions gammaInteractions)
-{
-  if (blockIdx.x == 0) {
-    // Clear queues and write statistics
-    for (int i = threadIdx.x; i < ParticleType::NumParticleTypes; i += blockDim.x) {
-      all.queues[i].currentlyActive->clear();
-      stats->inFlight[i]     = all.queues[i].nextActive->size();
-      stats->leakedTracks[i] = all.queues[i].leakedTracksCurrent->size() + all.queues[i].leakedTracksNext->size();
-      stats->queueFillLevel[i] = float(all.queues[i].nextActive->size()) / all.queues[i].nextActive->max_size();
-    }
-  } else if (blockIdx.x == 1 && threadIdx.x == 0) {
-    // Assert that there are enough slots allocated:
-    unsigned int particlesInFlight = 0;
-    SlotManager const &slotManager = *tracksAndSlots.slotManagers[0];
-    stats->slotFillLevel           = slotManager.FillLevel();
-
-    for (int i = 0; i < ParticleType::NumParticleTypes; ++i) {
-      particlesInFlight += all.queues[i].nextActive->size();
-    }
-    if (particlesInFlight > slotManager.OccupiedSlots()) {
-      printf("Error: %d in flight while %d slots allocated\n", particlesInFlight,
-             tracksAndSlots.slotManagers[0]->OccupiedSlots());
-      asm("trap;");
-    }
-  } else if (blockIdx.x == 2) {
-    if (threadIdx.x < gammaInteractions.NInt) {
-      gammaInteractions.queues[threadIdx.x]->clear();
-    }
-    if (threadIdx.x == 0) {
-      stats->hitBufferOccupancy = AsyncAdePT::gHitScoringBuffer_dev.fSlotCounter;
-    }
-  }
-
-#if false
-  if (blockIdx.x == 3) {
-    for (unsigned int i = threadIdx.x; i < 3; ++i) {
-      if (tracksAndSlots.slotManagers[i]->OccupiedSlots() < all.queues[i].nextActive->size())
-        printf("Error: For particle %d, %d slots are allocated for %ld in flight\n", i,
-               tracksAndSlots.slotManagers[i]->OccupiedSlots(), all.queues[i].nextActive->size());
-    }
-
-    if (threadIdx.x == 4) {
-      printf("In flight (kernel): %ld %ld %ld  %ld\tslots: %d %d %d\n", all.queues[0].nextActive->size(),
-             all.queues[1].nextActive->size(), all.queues[2].nextActive->size(),
-             all.queues[0].nextActive->size() + all.queues[1].nextActive->size() + all.queues[2].nextActive->size(),
-             tracksAndSlots.slotManagers[0]->OccupiedSlots(), tracksAndSlots.slotManagers[1]->OccupiedSlots(),
-             tracksAndSlots.slotManagers[2]->OccupiedSlots());
-    }
-  }
-#endif
-}
-
-__global__ void ZeroEventCounters(Stats *stats)
-{
-  constexpr auto size = std::extent<decltype(stats->perEventInFlight)>::value;
-  for (unsigned int i = threadIdx.x; i < size; i += blockDim.x) {
-    stats->perEventInFlight[i] = 0;
-    stats->perEventLeaked[i]   = 0;
-  }
-}
-
-/**
- * Count how many tracks are currently in flight for each event.
- */
-__global__ void CountCurrentPopulation(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots)
-{
-  constexpr unsigned int N = AsyncAdePTTransport::kMaxThreads;
-  __shared__ unsigned int sharedCount[N];
-
-  for (unsigned int particleType = blockIdx.x; particleType < ParticleType::NumParticleTypes;
-       particleType += gridDim.x) {
-    Track const *const tracks   = tracksAndSlots.tracks[particleType];
-    adept::MParray const *queue = all.queues[particleType].currentlyActive;
-
-    for (unsigned int i = threadIdx.x; i < N; i += blockDim.x)
-      sharedCount[i] = 0;
-
-    __syncthreads();
-
-    const auto end = queue->size();
-    for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
-      const auto slot     = (*queue)[i];
-      const auto threadId = tracks[slot].threadId;
-      atomicAdd(sharedCount + threadId, 1u);
-    }
-
-    __syncthreads();
-
-    for (unsigned int i = threadIdx.x; i < N; i += blockDim.x)
-      atomicAdd(stats->perEventInFlight + i, sharedCount[i]);
-
-    __syncthreads();
-  }
-}
-
-/**
- * Count tracks both in the current and the future queue of leaked particles.
- */
-__global__ void CountLeakedTracks(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots)
-{
-  constexpr auto nQueue = 2 * ParticleType::NumParticleTypes;
-  for (unsigned int queueIndex = blockIdx.x; queueIndex < nQueue; queueIndex += gridDim.x) {
-    const auto particleType   = queueIndex / 2;
-    Track const *const tracks = tracksAndSlots.tracks[particleType];
-    auto const queue = queueIndex < ParticleType::NumParticleTypes ? all.queues[particleType].leakedTracksCurrent
-                                                                   : all.queues[particleType].leakedTracksNext;
-    const auto end   = queue->size();
-    for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
-      const auto slot     = (*queue)[i];
-      const auto threadId = tracks[slot].threadId;
-      atomicAdd(stats->perEventLeaked + threadId, 1u);
-    }
-  }
-}
-
-template <typename... Args>
-__global__ void ClearQueues(Args *...queue)
-{
-  (queue->clear(), ...);
-}
-
-__global__ void ClearAllQueues(AllParticleQueues all)
-{
-  for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
-    all.queues[i].currentlyActive->clear();
-    all.queues[i].nextActive->clear();
-    all.queues[i].leakedTracksCurrent->clear();
-    all.queues[i].leakedTracksNext->clear();
-  }
-}
-
-__global__ void InitSlotManagers(SlotManager *mgr, std::size_t N)
-{
-  for (int i = 0; i < N; ++i) {
-    mgr[i].Clear();
-  }
-}
 
 /// Allocate memory on device, as well as streams and cuda events to synchronise kernels.
 /// If successful, this will initialise the member fGPUState.
 /// If memory allocation fails, an exception is thrown. In this case, the caller has to
 /// try again after some wait time or with less transport slots.
-void AsyncAdePTTransport::InitializeGPU()
+void InitializeGPU()
 {
   // auto gpuStateTmp   = std::make_unique<GPUstate>();
   auto gpuStateTmp   = new GPUstate();
@@ -594,7 +227,7 @@ void AsyncAdePTTransport::InitializeGPU()
   fGPUstate = gpuStateTmp;
 }
 
-void AsyncAdePTTransport::FreeGPU()
+void FreeGPU()
 {
   fGPUstate->runTransport = false;
   fGPUWorker.join();
@@ -606,14 +239,14 @@ void AsyncAdePTTransport::FreeGPU()
   // Free resources.
   fGPUstate.reset();
 
-  // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport, 
+  // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport,
   // check if there's any further cleanup required
 
   // Free G4HepEm data
   FreeG4HepEmData(AsyncAdePTTransport::fg4hepem_state->fData);
 }
 
-void AsyncAdePTTransport::ReturnTracksToG4()
+void ReturnTracksToG4()
 {
   std::scoped_lock lock{fBuffer->fromDeviceMutex};
   const auto &fromDevice                      = fBuffer->fromDevice_host.get();
@@ -637,7 +270,7 @@ void AsyncAdePTTransport::ReturnTracksToG4()
 #endif
 }
 
-void AsyncAdePTTransport::AdvanceEventStates(EventState oldState, EventState newState)
+void AdvanceEventStates(EventState oldState, EventState newState)
 {
   for (auto &eventState : fEventStates) {
     EventState expected = oldState;
@@ -645,7 +278,7 @@ void AsyncAdePTTransport::AdvanceEventStates(EventState oldState, EventState new
   }
 }
 
-void AsyncAdePTTransport::TransportLoop()
+void TransportLoop()
 {
   NVTXTracer tracer{"TransportLoop"};
 
@@ -665,7 +298,7 @@ void AsyncAdePTTransport::TransportLoop()
     }
   } while (!fGPUstate);
 
-  using InjectState  = GPUstate::InjectState;
+  using InjectState                             = GPUstate::InjectState;
   using ExtractState                            = GPUstate::ExtractState;
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
@@ -939,7 +572,8 @@ void AsyncAdePTTransport::TransportLoop()
                                            (*fBuffer->nFromDevice_host) * sizeof(TrackDataWithIDs),
                                            cudaMemcpyDeviceToHost, transferStream));
         COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
-            transferStream, [](void *thisPtr) { static_cast<AsyncAdePTTransport *>(thisPtr)->ReturnTracksToG4(); }, this));
+            transferStream, [](void *thisPtr) { static_cast<AsyncAdePTTransport *>(thisPtr)->ReturnTracksToG4(); },
+            this));
       }
 
       // -------------------------
@@ -1095,12 +729,12 @@ void AsyncAdePTTransport::TransportLoop()
   fGPUstate = nullptr;
 }
 
-std::shared_ptr<const std::vector<GPUHit>> AsyncAdePTTransport::GetGPUHits(unsigned int threadId) const
+std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId) const
 {
   return fGPUstate->fHitScoring->GetNextHitsVector(threadId);
 }
 
-void AsyncAdePTTransport::HitProcessingLoop(HitProcessingContext *const context)
+void HitProcessingLoop(HitProcessingContext *const context)
 {
   while (context->keepRunning) {
     std::unique_lock lock(context->mutex);
@@ -1115,3 +749,382 @@ void AsyncAdePTTransport::HitProcessingLoop(HitProcessingContext *const context)
     }
   }
 }
+
+} // namespace async_adept_impl
+
+///////////////////////
+
+namespace AsyncAdePT {
+
+__constant__ __device__ struct G4HepEmParameters g4HepEmPars;
+__constant__ __device__ struct G4HepEmData g4HepEmData;
+
+__constant__ __device__ adeptint::VolAuxData *gVolAuxData = nullptr;
+__constant__ __device__ double BzFieldValue               = 0;
+
+/// Transfer volume auxiliary data to GPU
+void InitVolAuxArray(adeptint::VolAuxArray &array)
+{
+  using adeptint::VolAuxData;
+  COPCORE_CUDA_CHECK(cudaMalloc(&array.fAuxData_dev, sizeof(VolAuxData) * array.fNumVolumes));
+  COPCORE_CUDA_CHECK(
+      cudaMemcpy(array.fAuxData_dev, array.fAuxData, sizeof(VolAuxData) * array.fNumVolumes, cudaMemcpyHostToDevice));
+  COPCORE_CUDA_CHECK(cudaMemcpyToSymbol(gVolAuxData, &array.fAuxData_dev, sizeof(VolAuxData *)));
+}
+
+/// Communication with the hit processing thread.
+struct HitProcessingContext {
+  cudaStream_t hitTransferStream;
+  std::condition_variable cv{};
+  std::mutex mutex{};
+  std::atomic_bool keepRunning = true;
+};
+
+/// Initialise the track buffers used to communicate between host and device.
+TrackBuffer::TrackBuffer(unsigned int numToDevice, unsigned int numFromDevice, unsigned short nThread)
+    : fNumToDevice{numToDevice}, fNumFromDevice{numFromDevice}, fromDeviceBuffers(nThread)
+{
+  TrackDataWithIDs *devPtr, *hostPtr;
+  // Double buffer for lock-free host runs:
+  COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, 2 * numToDevice * sizeof(TrackDataWithIDs)));
+  COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numToDevice * sizeof(TrackDataWithIDs)));
+  toDevice_host.reset(hostPtr);
+  toDevice_dev.reset(devPtr);
+
+  COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, numFromDevice * sizeof(TrackDataWithIDs)));
+  COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numFromDevice * sizeof(TrackDataWithIDs)));
+  fromDevice_host.reset(hostPtr);
+  fromDevice_dev.reset(devPtr);
+
+  unsigned int *nFromDevice = nullptr;
+  COPCORE_CUDA_CHECK(cudaMallocHost(&nFromDevice, sizeof(unsigned int)));
+  nFromDevice_host.reset(nFromDevice);
+
+  toDeviceBuffer[0].tracks    = toDevice_host.get();
+  toDeviceBuffer[0].maxTracks = numToDevice;
+  toDeviceBuffer[0].nTrack    = 0;
+  toDeviceBuffer[1].tracks    = toDevice_host.get() + numToDevice;
+  toDeviceBuffer[1].maxTracks = numToDevice;
+  toDeviceBuffer[1].nTrack    = 0;
+}
+
+} // namespace AsyncAdePT
+
+AsyncAdePTTransport::~AsyncAdePTTransport()
+{
+  FreeGPU();
+}
+
+// Kernel to initialize the set of queues per particle type.
+__global__ void InitParticleQueues(ParticleQueues queues, size_t CapacityTransport, size_t CapacityLeaked)
+{
+  adept::MParray::MakeInstanceAt(CapacityTransport, queues.currentlyActive);
+  adept::MParray::MakeInstanceAt(CapacityTransport, queues.nextActive);
+  adept::MParray::MakeInstanceAt(CapacityLeaked, queues.leakedTracksCurrent);
+  adept::MParray::MakeInstanceAt(CapacityLeaked, queues.leakedTracksNext);
+}
+
+// Init a queue at the designated location
+template <typename T>
+__global__ void InitQueue(adept::MParrayT<T> *queue, size_t Capacity)
+{
+  adept::MParrayT<T>::MakeInstanceAt(Capacity, queue);
+}
+
+// Kernel function to initialize tracks comming from a Geant4 buffer
+__global__ void InjectTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks, Secondaries secondaries,
+                             const vecgeom::VPlacedVolume *world, adept::MParrayT<QueueIndexPair> *toBeEnqueued,
+                             uint64_t initialSeed)
+{
+  constexpr double tolerance = 10. * vecgeom::kTolerance;
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < ntracks; i += blockDim.x * gridDim.x) {
+    ParticleGenerator *generator = nullptr;
+    const auto &trackInfo        = trackinfo[i];
+    short queueIndex             = -1;
+    switch (trackInfo.pdg) {
+    case 11:
+      generator  = &secondaries.electrons;
+      queueIndex = ParticleType::Electron;
+      break;
+    case -11:
+      generator  = &secondaries.positrons;
+      queueIndex = ParticleType::Positron;
+      break;
+    case 22:
+      generator  = &secondaries.gammas;
+      queueIndex = ParticleType::Gamma;
+    };
+    assert(generator != nullptr && "Unsupported pdg type");
+
+    // TODO: Delay when not enough slots?
+    const auto slot = generator->NextSlot();
+    Track &track    = generator->InitTrack(slot, initialSeed * trackInfo.eventId + trackInfo.trackId, trackInfo.eKin,
+                                           trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
+                                           static_cast<float>(trackInfo.properTime), trackInfo.position,
+                                           trackInfo.direction, trackInfo.eventId, trackInfo.parentID, trackInfo.threadId);
+    toBeEnqueued->push_back(QueueIndexPair{slot, queueIndex});
+
+    // We locate the pushed point because we run the risk that the
+    // point is not located in the GPU region
+#ifdef NDEBUG
+    constexpr int maxAttempt = 2;
+#else
+    constexpr int maxAttempt = 10;
+#endif
+    for (int attempt = 1; attempt < maxAttempt; ++attempt) {
+      const auto amount = attempt < 5 ? attempt : (attempt - 5) * -1;
+      track.navState.Clear();
+      const auto pushedPosition = track.pos + amount * tolerance * track.dir;
+      BVHNavigator::LocatePointIn(world, pushedPosition, track.navState, true);
+      // The track must be on boundary at this point
+      track.navState.SetBoundaryState(true);
+      // nextState is initialized as needed.
+#ifndef NDEBUG
+      const vecgeom::VPlacedVolume *volume = track.navState.Top();
+      int lvolID                           = volume->GetLogicalVolume()->id();
+      adeptint::VolAuxData const &auxData  = AsyncAdePT::gVolAuxData[lvolID];
+      if (auxData.fGPUregion && attempt == 1) {
+        break;
+      } else {
+        printf("Error [%d, %d]: ev=%d track=%d thread=%d: GPUregion=%d volID=%d "
+               "x=(%18.15f, %18.15f, %18.15f) dir=(%f, %f, %f) "
+               "Safety=%17.15f DistanceToOut=%f shiftAmount=%d\n",
+               blockIdx.x, threadIdx.x, trackInfo.eventId, trackInfo.trackId, trackInfo.threadId, auxData.fGPUregion,
+               volume->id(), pushedPosition[0], pushedPosition[1], pushedPosition[2], track.dir[0], track.dir[1],
+               track.dir[2], BVHNavigator::ComputeSafety(pushedPosition, track.navState),
+               volume->DistanceToOut(track.pos, track.dir), amount);
+        track.navState.Print();
+        if (auxData.fGPUregion) {
+          printf("Success in attempt %d shiftAmount %d\n", attempt, amount);
+          break;
+        }
+      }
+#endif
+    }
+  }
+}
+
+__global__ void EnqueueTracks(AllParticleQueues allQueues, adept::MParrayT<QueueIndexPair> *toBeEnqueued)
+{
+  const auto end = toBeEnqueued->size();
+  for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
+    const auto [slotNumber, particleType] = (*toBeEnqueued)[i];
+    allQueues.queues[particleType].nextActive->push_back(slotNumber);
+  }
+
+  __syncthreads();
+
+  if (threadIdx.x == 0) {
+    toBeEnqueued->clear();
+  }
+}
+
+__device__ unsigned int nFromDevice_dev;
+
+// Copy particles leaked from the GPU region into a compact buffer
+__global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs *fromDevice,
+                                     unsigned int maxFromDeviceBuffer)
+{
+  const auto numElectrons = all.leakedElectrons.fLeakedQueue->size();
+  const auto numPositrons = all.leakedPositrons.fLeakedQueue->size();
+  const auto numGammas    = all.leakedGammas.fLeakedQueue->size();
+  const auto total        = numElectrons + numPositrons + numGammas;
+  if (blockIdx.x == 0 && threadIdx.x == 0) nFromDevice_dev = total < maxFromDeviceBuffer ? total : maxFromDeviceBuffer;
+
+  for (unsigned int i = threadIdx.x + blockIdx.x * blockDim.x; i < total; i += blockDim.x * gridDim.x) {
+    LeakedTracks *leakedTracks = nullptr;
+    unsigned int queueSlot     = 0;
+    int pdg                    = 0;
+
+    if (i < numGammas) {
+      leakedTracks = &all.leakedGammas;
+      queueSlot    = i;
+      pdg          = 22;
+    } else if (i < numGammas + numElectrons) {
+      leakedTracks = &all.leakedElectrons;
+      queueSlot    = i - numGammas;
+      pdg          = 11;
+    } else {
+      leakedTracks = &all.leakedPositrons;
+      queueSlot    = i - numGammas - numElectrons;
+      pdg          = -11;
+    }
+
+    const auto trackSlot     = (*leakedTracks->fLeakedQueue)[queueSlot];
+    Track const *const track = leakedTracks->fTracks + trackSlot;
+
+    if (i >= maxFromDeviceBuffer) {
+      // No space to transfer it out
+      leakedTracks->fLeakedQueueNext->push_back(trackSlot);
+    } else {
+      fromDevice[i].position[0]  = track->pos[0];
+      fromDevice[i].position[1]  = track->pos[1];
+      fromDevice[i].position[2]  = track->pos[2];
+      fromDevice[i].direction[0] = track->dir[0];
+      fromDevice[i].direction[1] = track->dir[1];
+      fromDevice[i].direction[2] = track->dir[2];
+      fromDevice[i].eKin         = track->energy;
+      fromDevice[i].globalTime   = track->globalTime;
+      fromDevice[i].localTime    = track->localTime;
+      fromDevice[i].properTime   = track->properTime;
+      fromDevice[i].pdg          = pdg;
+      fromDevice[i].eventId      = track->eventId;
+      fromDevice[i].threadId     = track->threadId;
+
+      leakedTracks->fSlotManager->MarkSlotForFreeing(trackSlot);
+    }
+  }
+}
+
+template <typename... Ts>
+__global__ void FreeSlots1(Ts... slotManagers)
+{
+  (slotManagers->FreeMarkedSlotsStage1(), ...);
+}
+template <typename... Ts>
+__global__ void FreeSlots2(Ts... slotManagers)
+{
+  (slotManagers->FreeMarkedSlotsStage2(), ...);
+}
+
+// Finish iteration: clear queues and fill statistics.
+__global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots,
+                                GammaInteractions gammaInteractions)
+{
+  if (blockIdx.x == 0) {
+    // Clear queues and write statistics
+    for (int i = threadIdx.x; i < ParticleType::NumParticleTypes; i += blockDim.x) {
+      all.queues[i].currentlyActive->clear();
+      stats->inFlight[i]       = all.queues[i].nextActive->size();
+      stats->leakedTracks[i]   = all.queues[i].leakedTracksCurrent->size() + all.queues[i].leakedTracksNext->size();
+      stats->queueFillLevel[i] = float(all.queues[i].nextActive->size()) / all.queues[i].nextActive->max_size();
+    }
+  } else if (blockIdx.x == 1 && threadIdx.x == 0) {
+    // Assert that there are enough slots allocated:
+    unsigned int particlesInFlight = 0;
+    SlotManager const &slotManager = *tracksAndSlots.slotManagers[0];
+    stats->slotFillLevel           = slotManager.FillLevel();
+
+    for (int i = 0; i < ParticleType::NumParticleTypes; ++i) {
+      particlesInFlight += all.queues[i].nextActive->size();
+    }
+    if (particlesInFlight > slotManager.OccupiedSlots()) {
+      printf("Error: %d in flight while %d slots allocated\n", particlesInFlight,
+             tracksAndSlots.slotManagers[0]->OccupiedSlots());
+      asm("trap;");
+    }
+  } else if (blockIdx.x == 2) {
+    if (threadIdx.x < gammaInteractions.NInt) {
+      gammaInteractions.queues[threadIdx.x]->clear();
+    }
+    if (threadIdx.x == 0) {
+      stats->hitBufferOccupancy = AsyncAdePT::gHitScoringBuffer_dev.fSlotCounter;
+    }
+  }
+
+#if false
+  if (blockIdx.x == 3) {
+    for (unsigned int i = threadIdx.x; i < 3; ++i) {
+      if (tracksAndSlots.slotManagers[i]->OccupiedSlots() < all.queues[i].nextActive->size())
+        printf("Error: For particle %d, %d slots are allocated for %ld in flight\n", i,
+               tracksAndSlots.slotManagers[i]->OccupiedSlots(), all.queues[i].nextActive->size());
+    }
+
+    if (threadIdx.x == 4) {
+      printf("In flight (kernel): %ld %ld %ld  %ld\tslots: %d %d %d\n", all.queues[0].nextActive->size(),
+             all.queues[1].nextActive->size(), all.queues[2].nextActive->size(),
+             all.queues[0].nextActive->size() + all.queues[1].nextActive->size() + all.queues[2].nextActive->size(),
+             tracksAndSlots.slotManagers[0]->OccupiedSlots(), tracksAndSlots.slotManagers[1]->OccupiedSlots(),
+             tracksAndSlots.slotManagers[2]->OccupiedSlots());
+    }
+  }
+#endif
+}
+
+__global__ void ZeroEventCounters(Stats *stats)
+{
+  constexpr auto size = std::extent<decltype(stats->perEventInFlight)>::value;
+  for (unsigned int i = threadIdx.x; i < size; i += blockDim.x) {
+    stats->perEventInFlight[i] = 0;
+    stats->perEventLeaked[i]   = 0;
+  }
+}
+
+/**
+ * Count how many tracks are currently in flight for each event.
+ */
+__global__ void CountCurrentPopulation(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots)
+{
+  constexpr unsigned int N = AsyncAdePTTransport::kMaxThreads;
+  __shared__ unsigned int sharedCount[N];
+
+  for (unsigned int particleType = blockIdx.x; particleType < ParticleType::NumParticleTypes;
+       particleType += gridDim.x) {
+    Track const *const tracks   = tracksAndSlots.tracks[particleType];
+    adept::MParray const *queue = all.queues[particleType].currentlyActive;
+
+    for (unsigned int i = threadIdx.x; i < N; i += blockDim.x)
+      sharedCount[i] = 0;
+
+    __syncthreads();
+
+    const auto end = queue->size();
+    for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
+      const auto slot     = (*queue)[i];
+      const auto threadId = tracks[slot].threadId;
+      atomicAdd(sharedCount + threadId, 1u);
+    }
+
+    __syncthreads();
+
+    for (unsigned int i = threadIdx.x; i < N; i += blockDim.x)
+      atomicAdd(stats->perEventInFlight + i, sharedCount[i]);
+
+    __syncthreads();
+  }
+}
+
+/**
+ * Count tracks both in the current and the future queue of leaked particles.
+ */
+__global__ void CountLeakedTracks(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots)
+{
+  constexpr auto nQueue = 2 * ParticleType::NumParticleTypes;
+  for (unsigned int queueIndex = blockIdx.x; queueIndex < nQueue; queueIndex += gridDim.x) {
+    const auto particleType   = queueIndex / 2;
+    Track const *const tracks = tracksAndSlots.tracks[particleType];
+    auto const queue = queueIndex < ParticleType::NumParticleTypes ? all.queues[particleType].leakedTracksCurrent
+                                                                   : all.queues[particleType].leakedTracksNext;
+    const auto end   = queue->size();
+    for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
+      const auto slot     = (*queue)[i];
+      const auto threadId = tracks[slot].threadId;
+      atomicAdd(stats->perEventLeaked + threadId, 1u);
+    }
+  }
+}
+
+template <typename... Args>
+__global__ void ClearQueues(Args *...queue)
+{
+  (queue->clear(), ...);
+}
+
+__global__ void ClearAllQueues(AllParticleQueues all)
+{
+  for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
+    all.queues[i].currentlyActive->clear();
+    all.queues[i].nextActive->clear();
+    all.queues[i].leakedTracksCurrent->clear();
+    all.queues[i].leakedTracksNext->clear();
+  }
+}
+
+__global__ void InitSlotManagers(SlotManager *mgr, std::size_t N)
+{
+  for (int i = 0; i < N; ++i) {
+    mgr[i].Clear();
+  }
+}
+
+#endif // ASYNC_ADEPT_TRANSPORT_CUH

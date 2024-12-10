@@ -15,6 +15,7 @@
 
 #include <AdePT/core/AdePTTransportInterface.hh>
 #include <AdePT/core/CommonStruct.h>
+#include <AdePT/core/AdePTConfiguration.hh>
 // #include <AdePT/core/PerEventScoringImpl.cuh>
 
 #include <VecGeom/base/Config.h>
@@ -83,7 +84,7 @@ private:
   bool fTrackInAllRegions = false;
   std::vector<std::string> const *fGPURegionNames;
 
-  void FullInit();
+  void Initialize();
   void InitBVH();
   bool InitializeField(double bz);
   bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);

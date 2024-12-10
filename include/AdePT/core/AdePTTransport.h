@@ -8,7 +8,7 @@
 #ifndef ADEPT_TRANSPORT_H
 #define ADEPT_TRANSPORT_H
 
-#include "AdePTTransportInterface.hh"
+
 
 #include <unordered_map>
 #include <VecGeom/base/Config.h>
@@ -16,7 +16,8 @@
 #include <VecGeom/management/CudaManager.h> // forward declares vecgeom::cxx::VPlacedVolume
 #endif
 
-#include "CommonStruct.h"
+#include <AdePT/core/CommonStruct.h>
+#include <AdePT/core/AdePTTransportInterface.hh>
 #include <AdePT/core/AdePTScoringTemplate.cuh>
 #include <AdePT/core/HostScoringStruct.cuh>
 #include <AdePT/core/AdePTConfiguration.hh>

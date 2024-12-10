@@ -4,7 +4,7 @@
 #ifndef ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 #define ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 
-#include <AdePT/core/AsyncAdePTTransport.hh>
+// #include <AdePT/core/AsyncAdePTTransport.hh>
 #include <AdePT/core/PerEventScoringImpl.cuh>
 
 #include "Track.cuh"

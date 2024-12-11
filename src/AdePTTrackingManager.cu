@@ -11,7 +11,7 @@ template void ShowerGPU<AdePTGeant4Integration>(AdePTGeant4Integration &, int, a
                                                 HostScoring *, HostScoring *);
 } // namespace adept_impl
 
-namespace AsyncAdePT
-{
-void AsyncAdePTTransport::TransportLoop();
-}
+// namespace async_adept_impl
+// {
+// void AsyncAdePTTransport::TransportLoop();
+// }

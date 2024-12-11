@@ -11,28 +11,27 @@
 // free functions)
 // #include <AdePT/core/AsyncAdePTTransport.hh>
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////// 
 
 #include <AdePT/core/AsyncAdePTTransportStruct.cuh>
-
 #include <AdePT/core/CommonStruct.h>
+#include <AdePT/core/AdePTConfiguration.hh>
+#include <AdePT/core/PerEventScoringImpl.cuh>
+#include <AdePT/base/Atomic.h>
+#include <AdePT/base/MParray.h>
+#include <AdePT/copcore/Global.h>
+#include <AdePT/copcore/PhysicalConstants.h>
+#include <AdePT/copcore/Ranluxpp.h>
+#include <AdePT/kernels/electrons_async.cuh>
+#include <AdePT/kernels/gammas_async.cuh>
+#include <AdePT/navigation/BVHNavigator.h>
+#include <AdePT/integration/AdePTGeant4Integration.hh>
+// #include <AdePT/benchmarking/NVTX.h>
 
 #include <VecGeom/base/Config.h>
 #ifdef VECGEOM_ENABLE_CUDA
 #include <VecGeom/backend/cuda/Interface.h>
 #endif
-
-#include <AdePT/base/Atomic.h>
-#include <AdePT/base/MParray.h>
-#include <AdePT/navigation/BVHNavigator.h>
-#include <AdePT/core/AdePTConfiguration.hh>
-#include <AdePT/integration/AdePTGeant4Integration.hh>
-
-#include <AdePT/core/PerEventScoringImpl.cuh>
-
-#include <AdePT/copcore/Global.h>
-#include <AdePT/copcore/PhysicalConstants.h>
-#include <AdePT/copcore/Ranluxpp.h>
 
 #include <G4Threading.hh>
 #include <G4TransportationManager.hh>
@@ -55,11 +54,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <type_traits>
-
-#include <AdePT/kernels/electrons_async.cuh>
-#include <AdePT/kernels/gammas_async.cuh>
-
-#include <AdePT/benchmarking/NVTX.h>
 
 using namespace AsyncAdePT;
 
@@ -280,7 +274,7 @@ void AdvanceEventStates(EventState oldState, EventState newState)
 
 void TransportLoop()
 {
-  NVTXTracer tracer{"TransportLoop"};
+  // NVTXTracer tracer{"TransportLoop"};
 
   // Initialise the transport engine:
   do {
@@ -341,7 +335,7 @@ void TransportLoop()
   };
 
   while (gpuState.runTransport) {
-    NVTXTracer nvtx1{"Setup"}, nvtx2{"Setup2"};
+    // NVTXTracer nvtx1{"Setup"}, nvtx2{"Setup2"};
     InitSlotManagers<<<80, 256, 0, gpuState.stream>>>(gpuState.slotManager_dev, gpuState.nSlotManager_dev);
     COPCORE_CUDA_CHECK(cudaMemsetAsync(gpuState.stats_dev, 0, sizeof(Stats), gpuState.stream));
 
@@ -364,30 +358,30 @@ void TransportLoop()
 
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 
-#ifdef USE_NVTX
-    std::map<AsyncAdePTTransport::EventState, std::string> stateMap{
-        {EventState::NewTracksFromG4, "NewTracksFromG4"},
-        {EventState::G4RequestsFlush, "G4RequestsFlush"},
-        {EventState::Inject, "Inject"},
-        {EventState::InjectionCompleted, "InjectionCompleted"},
-        {EventState::Transporting, "Transporting"},
-        {EventState::WaitingForTransportToFinish, "WaitingForTransportToFinish"},
-        {EventState::RequestHitFlush, "RequestHitFlush"},
-        {EventState::HitsFlushed, "HitsFlushed"},
-        {EventState::FlushingTracks, "FlushingTracks"},
-        {EventState::DeviceFlushed, "DeviceFlushed"},
-        {EventState::LeakedTracksRetrieved, "LeakedTracksRetrieved"},
-        {EventState::ScoringRetrieved, "ScoringRetrieved"}};
-#endif
+// #ifdef USE_NVTX
+//     std::map<AsyncAdePTTransport::EventState, std::string> stateMap{
+//         {EventState::NewTracksFromG4, "NewTracksFromG4"},
+//         {EventState::G4RequestsFlush, "G4RequestsFlush"},
+//         {EventState::Inject, "Inject"},
+//         {EventState::InjectionCompleted, "InjectionCompleted"},
+//         {EventState::Transporting, "Transporting"},
+//         {EventState::WaitingForTransportToFinish, "WaitingForTransportToFinish"},
+//         {EventState::RequestHitFlush, "RequestHitFlush"},
+//         {EventState::HitsFlushed, "HitsFlushed"},
+//         {EventState::FlushingTracks, "FlushingTracks"},
+//         {EventState::DeviceFlushed, "DeviceFlushed"},
+//         {EventState::LeakedTracksRetrieved, "LeakedTracksRetrieved"},
+//         {EventState::ScoringRetrieved, "ScoringRetrieved"}};
+// #endif
 
     for (unsigned int iteration = 0;
          inFlight > 0 || gpuState.injectState != InjectState::Idle || gpuState.extractState != ExtractState::Idle ||
          std::any_of(fEventStates.begin(), fEventStates.end(), needTransport);
          ++iteration) {
-#ifdef USE_NVTX
-      nvtx1.setTag(stateMap[fEventStates[0].load()].data());
-      nvtx2.setTag(stateMap[fEventStates[1].load()].data());
-#endif
+// #ifdef USE_NVTX
+//       nvtx1.setTag(stateMap[fEventStates[0].load()].data());
+//       nvtx2.setTag(stateMap[fEventStates[1].load()].data());
+// #endif
 
       // Swap the queues for the next iteration.
       electrons.queues.SwapActive();

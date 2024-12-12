@@ -207,6 +207,13 @@ set_target_properties(AdePT_G4_integration
     CUDA_RESOLVE_DEVICE_SYMBOLS ON
 )
 
+option(ASYNC_MODE OFF "Enable the async transport backend")
+if(ASYNC_MODE)
+  add_compile_definitions(ASYNC_MODE)
+else()
+  message(STATUS "Async backend is disabled")
+endif()
+
 # Optional library to activate NVTX annotations for profiling:
 option(NVTX OFF "Add NVTX instrumentation for profiling (only for annotated examples)")
 add_library(NVTX INTERFACE)

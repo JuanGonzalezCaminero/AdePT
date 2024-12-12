@@ -4,7 +4,7 @@
 #ifndef ASYNC_MODE
 #include <AdePT/core/AdePTTransport.cuh>
 #else
-// #include <AdePT/core/AsyncAdePTTransport.cuh>
+#include <AdePT/core/AsyncAdePTTransport.cuh>
 #endif
 
 // #include <AdePT/core/AdePTTransport.cuh>

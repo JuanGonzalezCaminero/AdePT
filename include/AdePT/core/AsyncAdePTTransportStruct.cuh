@@ -4,6 +4,7 @@
 #ifndef ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 #define ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 
+#include <AdePT/core/CommonStruct.h>
 // #include <AdePT/core/AsyncAdePTTransport.hh>
 #include <AdePT/core/PerEventScoringImpl.cuh>
 
@@ -16,6 +17,9 @@
 #include <G4HepEmRandomEngine.hh>
 
 namespace AsyncAdePT {
+
+// TODO: For now this is duplicated from AsyncAdePTTransport.hh it need to be put in some common header
+static constexpr int kMaxThreads = 256;
 
 #ifdef __CUDA_ARCH__
 // Define inline implementations of the RNG methods for the device.
@@ -151,8 +155,8 @@ struct Stats {
   int leakedTracks[ParticleType::NumParticleTypes];
   float queueFillLevel[ParticleType::NumParticleTypes];
   float slotFillLevel;
-  unsigned int perEventInFlight[AsyncAdePTTransport::kMaxThreads];
-  unsigned int perEventLeaked[AsyncAdePTTransport::kMaxThreads];
+  unsigned int perEventInFlight[kMaxThreads];
+  unsigned int perEventLeaked[kMaxThreads];
   unsigned int hitBufferOccupancy;
 };
 

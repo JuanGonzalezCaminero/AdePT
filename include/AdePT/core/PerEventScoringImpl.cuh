@@ -85,7 +85,7 @@ class HitScoring {
   }
 
 public:
-  HitScoring(unsigned int hitCapacity, unsigned int nThread) : fHitCapacity{hitCapacity}, fHitQueues(nThread)
+  HitScoring(unsigned int hitCapacity, unsigned int nThread) : fHitCapacity{hitCapacity}, fHitQueues(nThread) {}
   unsigned int HitCapacity() const { return fHitCapacity; }
   void SwapDeviceBuffers(cudaStream_t cudaStream)
   {
@@ -206,6 +206,15 @@ struct PerEventScoring {
 
 namespace adept_scoring {
 
+/// @brief Utility function to copy a 3D vector, used for filling the Step Points
+__device__ __forceinline__ void Copy3DVector(vecgeom::Vector3D<Precision> const *source,
+                                             vecgeom::Vector3D<Precision> *destination)
+{
+  destination->x() = source->x();
+  destination->y() = source->y();
+  destination->z() = source->z();
+}
+
 /// @brief Record a hit
 template <>
 __device__ void RecordHit(AsyncAdePT::PerEventScoring * /*scoring*/, int aParentID, char aParticleType,
@@ -230,15 +239,15 @@ __device__ void RecordHit(AsyncAdePT::PerEventScoring * /*scoring*/, int aParent
   aGPUHit.fTotalEnergyDeposit = aTotalEnergyDeposit;
   // Pre step point
   aGPUHit.fPreStepPoint.fNavigationState = *aPreState;
-  Copy3DVector(*aPrePosition, aGPUHit.fPreStepPoint.fPosition);
-  Copy3DVector(*aPreMomentumDirection, aGPUHit.fPreStepPoint.fMomentumDirection);
+  Copy3DVector(aPrePosition, &(aGPUHit.fPreStepPoint.fPosition));
+  Copy3DVector(aPreMomentumDirection, &(aGPUHit.fPreStepPoint.fMomentumDirection));
   // Copy3DVector(aPrePolarization, aGPUHit.fPreStepPoint.fPolarization);
   aGPUHit.fPreStepPoint.fEKin   = aPreEKin;
   aGPUHit.fPreStepPoint.fCharge = aPreCharge;
   // Post step point
   aGPUHit.fPostStepPoint.fNavigationState = *aPostState;
-  Copy3DVector(*aPostPosition, aGPUHit.fPostStepPoint.fPosition);
-  Copy3DVector(*aPostMomentumDirection, aGPUHit.fPostStepPoint.fMomentumDirection);
+  Copy3DVector(aPostPosition, &(aGPUHit.fPostStepPoint.fPosition));
+  Copy3DVector(aPostMomentumDirection, &(aGPUHit.fPostStepPoint.fMomentumDirection));
   // Copy3DVector(aPostPolarization, aGPUHit.fPostStepPoint.fPolarization);
   aGPUHit.fPostStepPoint.fEKin   = aPostEKin;
   aGPUHit.fPostStepPoint.fCharge = aPostCharge;
@@ -255,17 +264,20 @@ __device__ void AccountProduced(AsyncAdePT::PerEventScoring *scoring, int num_el
 }
 
 
-template <>
+template <typename IntegrationLayer>
 inline void EndOfTransport(AsyncAdePT::PerEventScoring &scoring, AsyncAdePT::PerEventScoring *, cudaStream_t *, IntegrationLayer *)
 {
   scoring.CopyToHost();
   scoring.ClearGPU();
-  fGPUNetEnergy[threadId] = 0.;
 
-  if (fDebugLevel >= 2) {
-    G4cout << "\n\tScoring for event " << eventId << G4endl;
-    scoring.Print();
-  }
+  // TODO: this needs to be done by the caller, or the net energy array moved to the scoring data
+  // fGPUNetEnergy[threadId] = 0.;
+
+  // TODO: This isn't critical, if needed we need to add a debug level parameter to the interface
+  // if (fDebugLevel >= 2) {
+  //   G4cout << "\n\tScoring for event " << eventId << G4endl;
+  //   scoring.Print();
+  // }
 }
 
 } // namespace adept_scoring

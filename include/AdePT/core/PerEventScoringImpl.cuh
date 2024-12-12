@@ -11,7 +11,7 @@
 
 #include <VecGeom/navigation/NavigationState.h>
 
-#include <cub/device/device_merge_sort.cuh>
+// #include <cub/device/device_merge_sort.cuh>
 
 #include <atomic>
 #include <deque>

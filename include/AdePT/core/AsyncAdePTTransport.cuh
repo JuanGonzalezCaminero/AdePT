@@ -104,6 +104,7 @@ bool InitializeField(double bz)
   return true;
 }
 
+template <typename IntegrationLayer>
 void FlushScoring(AdePTScoring &scoring)
 {
   adept_scoring::EndOfTransport<IntegrationLayer>(scoring, nullptr, nullptr, nullptr);

@@ -8,7 +8,7 @@
 // #include <AdePT/core/AsyncAdePTTransport.hh>
 #include <AdePT/core/PerEventScoringImpl.cuh>
 
-#include "Track.cuh"
+#include "AsyncTrack.cuh"
 #include <AdePT/base/SlotManager.cuh>
 #include <AdePT/base/ResourceManagement.cuh>
 
@@ -18,7 +18,7 @@
 
 namespace AsyncAdePT {
 
-// TODO: For now this is duplicated from AsyncAdePTTransport.hh it need to be put in some common header
+// TODO: For now this is duplicated from AsyncAdePTTransport.hh it needs to be put in some common header
 static constexpr int kMaxThreads = 256;
 
 #ifdef __CUDA_ARCH__

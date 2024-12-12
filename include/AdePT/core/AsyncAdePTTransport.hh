@@ -45,7 +45,6 @@ public:
   static constexpr int kMaxThreads = 256;
   static inline uint64_t fAdePTSeed = 1234567;
 
-private:
   enum class EventState : unsigned char {
     NewTracksFromG4,
     G4RequestsFlush,
@@ -62,6 +61,7 @@ private:
     ScoringRetrieved
   };
 
+private:
   unsigned short fNThread{0};       ///< Number of G4 workers
   unsigned int fTrackCapacity{0};   ///< Number of track slots to allocate on device
   unsigned int fScoringCapacity{0}; ///< Number of hit slots to allocate on device
@@ -89,14 +89,14 @@ private:
   bool InitializeField(double bz);
   bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
   bool InitializePhysics();
-  void InitializeGPU();
-  void FreeGPU();
-  /// @brief Asynchronous loop for transporting particles on GPU.
-  void TransportLoop();
-  void HitProcessingLoop(HitProcessingContext *const);
-  void ReturnTracksToG4();
-  void AdvanceEventStates(EventState oldState, EventState newState);
-  std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId) const;
+  // void InitializeGPU();
+  // void FreeGPU();
+  // /// @brief Asynchronous loop for transporting particles on GPU.
+  // void TransportLoop();
+  // void HitProcessingLoop(HitProcessingContext *const);
+  // void ReturnTracksToG4();
+  // void AdvanceEventStates(EventState oldState, EventState newState);
+  // std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId) const;
 
 public:
   AsyncAdePTTransport(AdePTConfiguration &configuration);

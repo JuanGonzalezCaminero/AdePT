@@ -723,7 +723,7 @@ void TransportLoop()
   fGPUstate = nullptr;
 }
 
-std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId) const
+std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId)
 {
   return fGPUstate->fHitScoring->GetNextHitsVector(threadId);
 }
@@ -742,6 +742,11 @@ void HitProcessingLoop(HitProcessingContext *const context)
       fCV_G4Workers.notify_all();
     }
   }
+}
+
+std::thread LaunchGPUWorker()
+{
+  std::thread{&TransportLoop};
 }
 
 } // namespace async_adept_impl

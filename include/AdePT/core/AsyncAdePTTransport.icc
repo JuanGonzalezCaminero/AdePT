@@ -43,6 +43,9 @@ namespace async_adept_impl
 bool InitializeField(double);
 static G4HepEmState *InitG4HepEm();
 void FlushScoring(AdePTScoring &);
+void TransportLoop();
+std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int);
+std::thread LaunchGPUWorker();
 }
 
 namespace AsyncAdePT {
@@ -231,7 +234,9 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
   // with the number of threads.
   fBuffer = std::make_unique<TrackBuffer>(8192 * fNThread, 1024 * fNThread, fNThread);
 
-  fGPUWorker = std::thread{&AsyncAdePTTransport::TransportLoop, this};
+  fGPUWorker = async_adept_impl::LaunchGPUWorker();
+  
+  // std::thread{&AsyncAdePTTransport::TransportLoop, this};
 }
 
 template <typename IntegrationLayer>
@@ -260,7 +265,7 @@ void AsyncAdePTTransport<IntegrationLayer>::Flush(G4int threadId, G4int eventId)
     }
 
     std::shared_ptr<const std::vector<GPUHit>> gpuHits;
-    while ((gpuHits = GetGPUHits(threadId)) != nullptr) {
+    while ((gpuHits = async_adept_impl::GetGPUHits(threadId)) != nullptr) {
       GPUHit dummy;
       dummy.fEventId = eventId;
       auto range     = std::equal_range(gpuHits->begin(), gpuHits->end(), dummy,

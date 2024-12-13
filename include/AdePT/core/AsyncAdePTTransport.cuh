@@ -225,6 +225,7 @@ __global__ void FreeSlots1(Ts... slotManagers)
 {
   (slotManagers->FreeMarkedSlotsStage1(), ...);
 }
+
 template <typename... Ts>
 __global__ void FreeSlots2(Ts... slotManagers)
 {
@@ -371,7 +372,6 @@ __global__ void InitSlotManagers(SlotManager *mgr, std::size_t N)
   }
 }
 
-
 /// WIP: Free functions implementing the CUDA parts
 namespace async_adept_impl {
 
@@ -427,11 +427,11 @@ void FlushScoring(AdePTScoring &scoring)
 /// If successful, this will initialise the member fGPUState.
 /// If memory allocation fails, an exception is thrown. In this case, the caller has to
 /// try again after some wait time or with less transport slots.
-void InitializeGPU()
+GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer& trackBuffer)
 {
-  // auto gpuStateTmp   = std::make_unique<GPUstate>();
-  auto gpuStateTmp   = new GPUstate();
-  GPUstate &gpuState = *gpuStateTmp;
+  // auto gpuState_ptr   = std::make_unique<GPUstate>();
+  auto gpuState_ptr   = new GPUstate();
+  GPUstate &gpuState = *gpuState_ptr;
 
   // Allocate structures to manage tracks of an implicit type:
   //  * memory to hold the actual Track elements,
@@ -459,8 +459,8 @@ void InitializeGPU()
     if (emplaceForAutoDelete) gpuState.allCudaPointers.push_back(devPtr);
   };
 
-  gpuState.slotManager_host = SlotManager{static_cast<SlotManager::value_type>(fTrackCapacity),
-                                          static_cast<SlotManager::value_type>(fTrackCapacity)};
+  gpuState.slotManager_host = SlotManager{static_cast<SlotManager::value_type>(trackCapacity),
+                                          static_cast<SlotManager::value_type>(trackCapacity)};
   gpuState.slotManager_dev  = nullptr;
   gpuMalloc(gpuState.slotManager_dev, gpuState.nSlotManager_dev);
   COPCORE_CUDA_CHECK(
@@ -472,7 +472,7 @@ void InitializeGPU()
     ParticleType &particleType = gpuState.particles[i];
     // Provide 20% more queue slots than track slots, so a large cluster of a specific particle type
     // doesn't exhaust the queues.
-    const size_t nSlot              = fTrackCapacity * ParticleType::relativeQueueSize[i] * 1.2;
+    const size_t nSlot              = trackCapacity * ParticleType::relativeQueueSize[i] * 1.2;
     const size_t sizeOfQueueStorage = adept::MParray::SizeOfInstance(nSlot);
     const size_t sizeOfLeakQueue    = adept::MParray::SizeOfInstance(nSlot / 10);
 
@@ -495,7 +495,7 @@ void InitializeGPU()
 
   // init gamma interaction queues
   for (unsigned int i = 0; i < GammaInteractions::NInt; ++i) {
-    const auto capacity     = fTrackCapacity / 6;
+    const auto capacity     = trackCapacity / 6;
     const auto instanceSize = adept::MParrayT<GammaInteractions::Data>::SizeOfInstance(capacity);
     void *gpuPtr            = nullptr;
     gpuMalloc(gpuPtr, instanceSize);
@@ -508,74 +508,32 @@ void InitializeGPU()
   COPCORE_CUDA_CHECK(cudaMallocHost(&gpuState.stats, sizeof(Stats)));
 
   // init scoring structures
-  gpuMalloc(gpuState.fScoring_dev, fNThread);
+  gpuMalloc(gpuState.fScoring_dev, numThreads);
 
   fScoring->clear();
-  fScoring->reserve(fNThread);
-  for (unsigned int i = 0; i < fNThread; ++i) {
+  fScoring->reserve(numThreads);
+  for (unsigned int i = 0; i < numThreads; ++i) {
     fScoring->emplace_back(gpuState.fScoring_dev + i);
   }
-  gpuState.fHitScoring.reset(new HitScoring(fScoringCapacity, fNThread));
+  gpuState.fHitScoring.reset(new HitScoring(scoringCapacity, numThreads));
 
-  const auto injectQueueSize = adept::MParrayT<QueueIndexPair>::SizeOfInstance(fBuffer->fNumToDevice);
+  const auto injectQueueSize = adept::MParrayT<QueueIndexPair>::SizeOfInstance(trackBuffer.fNumToDevice);
   void *gpuPtr               = nullptr;
   gpuMalloc(gpuPtr, injectQueueSize);
   gpuState.injectionQueue = static_cast<adept::MParrayT<QueueIndexPair> *>(gpuPtr);
-  InitQueue<QueueIndexPair><<<1, 1>>>(gpuState.injectionQueue, fBuffer->fNumToDevice);
+  InitQueue<QueueIndexPair><<<1, 1>>>(gpuState.injectionQueue, trackBuffer.fNumToDevice);
 
   // This is the largest allocation. If it does not fit, we need to try again:
   Track *trackStorage_dev = nullptr;
-  gpuMalloc(trackStorage_dev, fTrackCapacity);
+  gpuMalloc(trackStorage_dev, trackCapacity);
 
   for (auto &partType : gpuState.particles) {
     partType.tracks = trackStorage_dev;
   }
 
-  // fGPUstate = std::move(gpuStateTmp);
-  fGPUstate = gpuStateTmp;
-}
-
-void FreeGPU()
-{
-  fGPUstate->runTransport = false;
-  fGPUWorker.join();
-
-  adeptint::VolAuxData *volAux = nullptr;
-  COPCORE_CUDA_CHECK(cudaMemcpyFromSymbol(&volAux, AsyncAdePT::gVolAuxData, sizeof(adeptint::VolAuxData *)));
-  COPCORE_CUDA_CHECK(cudaFree(volAux));
-
-  // Free resources.
-  fGPUstate.reset();
-
-  // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport,
-  // check if there's any further cleanup required
-
-  // Free G4HepEm data
-  FreeG4HepEmData(AsyncAdePTTransport::fg4hepem_state->fData);
-}
-
-void ReturnTracksToG4()
-{
-  std::scoped_lock lock{fBuffer->fromDeviceMutex};
-  const auto &fromDevice                      = fBuffer->fromDevice_host.get();
-  TrackDataWithIDs const *const fromDeviceEnd = fromDevice + *fBuffer->nFromDevice_host;
-
-  for (TrackDataWithIDs *trackIt = fromDevice; trackIt < fromDeviceEnd; ++trackIt) {
-    assert(0 <= trackIt->threadId && trackIt->threadId <= fNThread);
-    fBuffer->fromDeviceBuffers[trackIt->threadId].push_back(*trackIt);
-  }
-
-  AdvanceEventStates(EventState::FlushingTracks, EventState::DeviceFlushed);
-  fGPUstate->extractState = GPUstate::ExtractState::Idle;
-
-#ifndef NDEBUG
-  for (const auto &trackBuffer : fBuffer->fromDeviceBuffers) {
-    if (trackBuffer.empty()) continue;
-    const auto eventId = trackBuffer.front().eventId;
-    assert(std::all_of(trackBuffer.begin(), trackBuffer.end(),
-                       [eventId](const TrackDataWithIDs &track) { return eventId == track.eventId; }));
-  }
-#endif
+  // fGPUstate = std::move(gpuState_ptr);
+  // fGPUstate = gpuState_ptr;
+  return gpuState_ptr;
 }
 
 void AdvanceEventStates(EventState oldState, EventState newState)
@@ -586,31 +544,55 @@ void AdvanceEventStates(EventState oldState, EventState newState)
   }
 }
 
-void TransportLoop()
+void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState)
+{
+  std::scoped_lock lock{trackBuffer.fromDeviceMutex};
+  const auto &fromDevice                      = trackBuffer.fromDevice_host;
+  TrackDataWithIDs const *const fromDeviceEnd = fromDevice + *trackBuffer.nFromDevice_host;
+
+  for (TrackDataWithIDs *trackIt = fromDevice; trackIt < fromDeviceEnd; ++trackIt) {
+    assert(0 <= trackIt->threadId && trackIt->threadId <= numThreads);
+    trackBuffer.fromDeviceBuffers[trackIt->threadId].push_back(*trackIt);
+  }
+
+  AdvanceEventStates(EventState::FlushingTracks, EventState::DeviceFlushed);
+  gpuState.extractState = GPUstate::ExtractState::Idle;
+
+#ifndef NDEBUG
+  for (const auto &buffer : trackBuffer.fromDeviceBuffers) {
+    if (buffer.empty()) continue;
+    const auto eventId = buffer.front().eventId;
+    assert(std::all_of(buffer.begin(), buffer.end(),
+                       [eventId](const TrackDataWithIDs &track) { return eventId == track.eventId; }));
+  }
+#endif
+}
+
+void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer& trackBuffer, GPUstate *gpuStatePtr)
 {
   // NVTXTracer tracer{"TransportLoop"};
 
   // Initialise the transport engine:
   do {
     try {
-      InitializeGPU();
+      gpuStatePtr = InitializeGPU(trackCapacity, scoringCapacity, numThreads, trackBuffer);
     } catch (std::invalid_argument &exc) {
       // Clear error state:
       auto result = cudaGetLastError();
       std::cerr << "\nError: AdePT failed to initialise the device (" << cudaGetErrorName(result) << "):\n"
-                << exc.what() << "\nReducing track capacity: " << fTrackCapacity << " --> " << fTrackCapacity * 0.9
+                << exc.what() << "\nReducing track capacity: " << trackCapacity << " --> " << trackCapacity * 0.9
                 << '\n';
-      fTrackCapacity *= 0.9;
+      trackCapacity *= 0.9;
 
-      if (fTrackCapacity < 10000) throw std::runtime_error{"AdePT is unable to allocate GPU memory."};
+      if (trackCapacity < 10000) throw std::runtime_error{"AdePT is unable to allocate GPU memory."};
     }
-  } while (!fGPUstate);
+  } while (!gpuStatePtr);
 
   using InjectState                             = GPUstate::InjectState;
   using ExtractState                            = GPUstate::ExtractState;
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
-  GPUstate &gpuState                            = *fGPUstate;
+  GPUstate &gpuState                            = *gpuStatePtr;
 
   ParticleType &electrons = gpuState.particles[ParticleType::Electron];
   ParticleType &positrons = gpuState.particles[ParticleType::Positron];
@@ -1063,6 +1045,25 @@ std::thread LaunchGPUWorker()
   std::thread{&TransportLoop};
 }
 
+void FreeGPU(GPUstate &gpuState, G4HepEmState &g4hepem_state, std::thread &gpuWorker)
+{
+  gpuState.runTransport = false;
+  gpuWorker.join();
+
+  adeptint::VolAuxData *volAux = nullptr;
+  COPCORE_CUDA_CHECK(cudaMemcpyFromSymbol(&volAux, AsyncAdePT::gVolAuxData, sizeof(adeptint::VolAuxData *)));
+  COPCORE_CUDA_CHECK(cudaFree(volAux));
+
+  // Free resources.
+  gpuState.reset();
+
+  // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport,
+  // check if there's any further cleanup required
+
+  // Free G4HepEm data
+  FreeG4HepEmData(g4hepem_state.fData);
+}
+
 } // namespace async_adept_impl
 
 ///////////////////////
@@ -1123,10 +1124,10 @@ TrackBuffer::TrackBuffer(unsigned int numToDevice, unsigned int numFromDevice, u
 
 } // namespace AsyncAdePT
 
-AsyncAdePTTransport::~AsyncAdePTTransport()
-{
-  FreeGPU();
-}
+// AsyncAdePTTransport::~AsyncAdePTTransport()
+// {
+//   FreeGPU();
+// }
 
 
 #endif // ASYNC_ADEPT_TRANSPORT_CUH

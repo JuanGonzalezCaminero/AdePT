@@ -46,6 +46,7 @@ void FlushScoring(AdePTScoring &);
 void TransportLoop();
 std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int);
 std::thread LaunchGPUWorker();
+void FreeGPU(AsyncAdePT::GPUstate &, G4HepEmState &, std::thread &);
 }
 
 namespace AsyncAdePT {
@@ -127,6 +128,12 @@ AsyncAdePTTransport<IntegrationLayer>::AsyncAdePTTransport(AdePTConfiguration &c
   // }
 
   AsyncAdePTTransport::Initialize();
+}
+
+template <typename IntegrationLayer>
+AsyncAdePTTransport<IntegrationLayer>::~AsyncAdePTTransport()
+{
+  async_adept_impl::FreeGPU(*fGPUstate, *fg4hepem_state, fGPUWorker);
 }
 
 template <typename IntegrationLayer>

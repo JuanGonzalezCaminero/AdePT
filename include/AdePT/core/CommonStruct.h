@@ -120,8 +120,10 @@ struct TrackBuffer {
   unsigned int fNumToDevice{0};   ///< number of slots in the toDevice buffer
   unsigned int fNumFromDevice{0}; ///< number of slots in the fromDevice buffer
   TrackDataWithIDs *toDevice_host;                              ///< Tracks to be transported to the device
+  // TODO: Use ResourceManager for CUDA pointers if possible
   TrackDataWithIDs *toDevice_dev; ///< toDevice buffer of tracks
   TrackDataWithIDs *fromDevice_host; ///< Tracks from device
+  // TODO: Use ResourceManager for CUDA pointers if possible
   TrackDataWithIDs *fromDevice_dev;                                     ///< fromDevice buffer of tracks
   unsigned int *nFromDevice_host; ///< Number of tracks collected on device
 

@@ -5,6 +5,7 @@
 #define ASYNC_ADEPT_TRANSPORT_STRUCT_CUH
 
 #include <AdePT/core/CommonStruct.h>
+#include <AdePT/core/AsyncAdePTTransportStruct.hh>
 // #include <AdePT/core/AsyncAdePTTransport.hh>
 #include <AdePT/core/PerEventScoringImpl.cuh>
 
@@ -17,9 +18,6 @@
 #include <G4HepEmRandomEngine.hh>
 
 namespace AsyncAdePT {
-
-// TODO: For now this is duplicated from AsyncAdePTTransport.hh it needs to be put in some common header
-static constexpr int kMaxThreads = 256;
 
 #ifdef __CUDA_ARCH__
 // Define inline implementations of the RNG methods for the device.

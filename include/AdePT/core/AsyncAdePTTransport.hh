@@ -16,6 +16,9 @@
 #include <AdePT/core/AdePTTransportInterface.hh>
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AdePTConfiguration.hh>
+
+#include <AdePT/core/AsyncAdePTTransportStruct.hh>
+
 // #include <AdePT/core/PerEventScoringImpl.cuh>
 
 #include <VecGeom/base/Config.h>
@@ -36,7 +39,9 @@ struct G4HepEmState;
 namespace AsyncAdePT {
 struct TrackBuffer;
 struct GPUstate;
-struct HitProcessingContext;
+// enum class EventState : unsigned char;
+// struct HitProcessingContext;
+
 void InitVolAuxArray(adeptint::VolAuxArray &array);
 
 template <typename IntegrationLayer>
@@ -44,22 +49,6 @@ class AsyncAdePTTransport : public AdePTTransportInterface {
 public:
   static constexpr int kMaxThreads = 256;
   static inline uint64_t fAdePTSeed = 1234567;
-
-  enum class EventState : unsigned char {
-    NewTracksFromG4,
-    G4RequestsFlush,
-    Inject,
-    InjectionCompleted,
-    Transporting,
-    WaitingForTransportToFinish,
-    RequestHitFlush,
-    FlushingHits,
-    HitsFlushed,
-    FlushingTracks,
-    DeviceFlushed,
-    LeakedTracksRetrieved,
-    ScoringRetrieved
-  };
 
 private:
   unsigned short fNThread{0};       ///< Number of G4 workers

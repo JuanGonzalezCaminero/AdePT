@@ -14,6 +14,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////// 
 
 #include <AdePT/core/AsyncAdePTTransportStruct.cuh>
+#include <AdePT/core/AsyncAdePTTransportStruct.hh>
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AdePTConfiguration.hh>
 #include <AdePT/core/PerEventScoringImpl.cuh>
@@ -58,6 +59,14 @@
 using namespace AsyncAdePT;
 
 using AdePTScoring = PerEventScoring;
+
+/// Communication with the hit processing thread.
+struct HitProcessingContext {
+  cudaStream_t hitTransferStream;
+  std::condition_variable cv{};
+  std::mutex mutex{};
+  std::atomic_bool keepRunning = true;
+};
 
 // Kernel to initialize the set of queues per particle type.
 __global__ void InitParticleQueues(ParticleQueues queues, size_t CapacityTransport, size_t CapacityLeaked)
@@ -300,7 +309,7 @@ __global__ void ZeroEventCounters(Stats *stats)
  */
 __global__ void CountCurrentPopulation(AllParticleQueues all, Stats *stats, TracksAndSlots tracksAndSlots)
 {
-  constexpr unsigned int N = AsyncAdePTTransport::kMaxThreads;
+  constexpr unsigned int N = kMaxThreads;
   __shared__ unsigned int sharedCount[N];
 
   for (unsigned int particleType = blockIdx.x; particleType < ParticleType::NumParticleTypes;
@@ -568,7 +577,24 @@ void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState)
 #endif
 }
 
-void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer& trackBuffer, GPUstate *gpuStatePtr)
+void HitProcessingLoop(HitProcessingContext *const context, GPUstate *gpuState)
+{
+  while (context->keepRunning) {
+    std::unique_lock lock(context->mutex);
+    context->cv.wait(lock);
+
+    gpuState->fHitScoring->TransferHitsToHost(context->hitTransferStream);
+    const bool haveNewHits = gpuState->fHitScoring->ProcessHits();
+
+    if (haveNewHits) {
+      AdvanceEventStates(EventState::FlushingHits, EventState::HitsFlushed);
+      fCV_G4Workers.notify_all();
+    }
+  }
+}
+
+void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer& trackBuffer, GPUstate *gpuStatePtr,
+                    int adeptSeed)
 {
   // NVTXTracer tracer{"TransportLoop"};
 
@@ -616,7 +642,7 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
   };
 
   std::unique_ptr<HitProcessingContext> hitProcessing{new HitProcessingContext{transferStream}};
-  std::thread hitProcessingThread{&AsyncAdePTTransport::HitProcessingLoop, this, hitProcessing.get()};
+  std::thread hitProcessingThread{&HitProcessingLoop, this, hitProcessing.get(), gpuState};
 
   auto computeThreadsAndBlocks = [](unsigned int nParticles) -> std::pair<unsigned int, unsigned int> {
     constexpr int TransportThreads             = 256;
@@ -648,9 +674,10 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
       std::this_thread::sleep_for(10ms);
     }
 
-    if (fDebugLevel > 2) {
-      G4cout << "GPU transport starting" << std::endl;
-    }
+    // TODO: Pass debug level here
+    // if (fDebugLevel > 2) {
+    //   G4cout << "GPU transport starting" << std::endl;
+    // }
 
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 
@@ -705,18 +732,19 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
           }
         }
 
-        if (auto &toDevice = fBuffer->getActiveBuffer(); toDevice.nTrack > 0) {
+        if (auto &toDevice = trackBuffer.getActiveBuffer(); toDevice.nTrack > 0) {
           gpuState.injectState = InjectState::CreatingSlots;
 
-          fBuffer->swapToDeviceBuffers();
+          trackBuffer.swapToDeviceBuffers();
           std::scoped_lock lock{toDevice.mutex};
           const auto nInject = std::min(toDevice.nTrack.load(), toDevice.maxTracks);
           toDevice.nTrack    = 0;
 
-          if (fDebugLevel > 3) std::cout << "Injecting " << nInject << " to GPU\n";
+          // TODO: Pass debug level here
+          // if (fDebugLevel > 3) std::cout << "Injecting " << nInject << " to GPU\n";
 
           // copy buffer of tracks to device
-          COPCORE_CUDA_CHECK(cudaMemcpyAsync(fBuffer->toDevice_dev.get(), toDevice.tracks,
+          COPCORE_CUDA_CHECK(cudaMemcpyAsync(trackBuffer.toDevice_dev.get(), toDevice.tracks,
                                              nInject * sizeof(TrackDataWithIDs), cudaMemcpyHostToDevice,
                                              transferStream));
           // Mark end of copy operation:
@@ -726,7 +754,7 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
           constexpr auto injectThreads = 128u;
           const auto injectBlocks      = (nInject + injectThreads - 1) / injectThreads;
           InjectTracks<<<injectBlocks, injectThreads, 0, transferStream>>>(
-              fBuffer->toDevice_dev.get(), nInject, secondaries, world_dev, gpuState.injectionQueue, fAdePTSeed);
+              trackBuffer.toDevice_dev.get(), nInject, secondaries, world_dev, gpuState.injectionQueue, adeptSeed);
           COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
               transferStream,
               [](void *arg) { (*static_cast<decltype(GPUstate::injectState) *>(arg)) = InjectState::ReadyToEnqueue; },
@@ -838,10 +866,14 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
 
         // Populate the staging buffer and copy to host
         constexpr unsigned int block_size = 128;
-        const unsigned int grid_size      = (fBuffer->fNumFromDevice + block_size - 1) / block_size;
-        FillFromDeviceBuffer<<<grid_size, block_size, 0, transferStream>>>(allLeaked, fBuffer->fromDevice_dev.get(),
-                                                                           fBuffer->fNumFromDevice);
-        COPCORE_CUDA_CHECK(cudaMemcpyFromSymbolAsync(fBuffer->nFromDevice_host.get(), nFromDevice_dev,
+        const unsigned int grid_size      = (trackBuffer.fNumFromDevice + block_size - 1) / block_size;
+        // TODO: ResourceManager
+        FillFromDeviceBuffer<<<grid_size, block_size, 0, transferStream>>>(allLeaked, trackBuffer.fromDevice_dev,
+        // FillFromDeviceBuffer<<<grid_size, block_size, 0, transferStream>>>(allLeaked, trackBuffer.fromDevice_dev.get(),
+                                                                           trackBuffer.fNumFromDevice);
+        // TODO: ResourceManager
+        COPCORE_CUDA_CHECK(cudaMemcpyFromSymbolAsync(trackBuffer.nFromDevice_host, nFromDevice_dev,
+        // COPCORE_CUDA_CHECK(cudaMemcpyFromSymbolAsync(trackBuffer.nFromDevice_host.get(), nFromDevice_dev,
                                                      sizeof(unsigned int), 0, cudaMemcpyDeviceToHost, transferStream));
         COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
             transferStream,
@@ -858,8 +890,10 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
 
       if (gpuState.extractState == ExtractState::ReadyToCopy) {
         gpuState.extractState = ExtractState::CopyToHost;
-        COPCORE_CUDA_CHECK(cudaMemcpyAsync(fBuffer->fromDevice_host.get(), fBuffer->fromDevice_dev.get(),
-                                           (*fBuffer->nFromDevice_host) * sizeof(TrackDataWithIDs),
+        // TODO: ResourceManager
+        COPCORE_CUDA_CHECK(cudaMemcpyAsync(trackBuffer.fromDevice_host, trackBuffer.fromDevice_dev,
+        // COPCORE_CUDA_CHECK(cudaMemcpyAsync(trackBuffer.fromDevice_host.get(), trackBuffer.fromDevice_dev.get(),
+                                           (*trackBuffer.nFromDevice_host) * sizeof(TrackDataWithIDs),
                                            cudaMemcpyDeviceToHost, transferStream));
         COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
             transferStream, [](void *thisPtr) { static_cast<AsyncAdePTTransport *>(thisPtr)->ReturnTracksToG4(); },
@@ -915,7 +949,7 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
           particlesInFlight[i] = gpuState.stats->inFlight[i];
         }
 
-        for (unsigned short threadId = 0; threadId < fNThread; ++threadId) {
+        for (unsigned short threadId = 0; threadId < numThreads; ++threadId) {
           const auto state = fEventStates[threadId].load(std::memory_order_acquire);
           if (state == EventState::WaitingForTransportToFinish && gpuState.stats->perEventInFlight[threadId] == 0) {
             fEventStates[threadId] = EventState::RequestHitFlush;
@@ -947,28 +981,29 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
         fCV_G4Workers.notify_all();
       }
 
-      if (fDebugLevel >= 3 && inFlight > 0 || (fDebugLevel >= 2 && iteration % 500 == 0)) {
-        std::cerr << inFlight << " in flight ";
-        std::cerr << "(" << gpuState.stats->inFlight[ParticleType::Electron] << " "
-                  << gpuState.stats->inFlight[ParticleType::Positron] << " "
-                  << gpuState.stats->inFlight[ParticleType::Gamma] << "),\tqueues:(" << std::setprecision(3)
-                  << gpuState.stats->queueFillLevel[ParticleType::Electron] << " "
-                  << gpuState.stats->queueFillLevel[ParticleType::Positron] << " "
-                  << gpuState.stats->queueFillLevel[ParticleType::Gamma] << ")";
-        std::cerr << "\t slots:" << gpuState.stats->slotFillLevel << ", " << numLeaked << " leaked."
-                  << "\tInjectState: " << static_cast<unsigned int>(gpuState.injectState.load())
-                  << "\tExtractState: " << static_cast<unsigned int>(gpuState.extractState.load())
-                  << "\tHitBuffer: " << gpuState.stats->hitBufferOccupancy;
-        if (fDebugLevel >= 4) {
-          std::cerr << "\n\tper event: ";
-          for (unsigned int i = 0; i < fNThread; ++i) {
-            std::cerr << i << ": " << gpuState.stats->perEventInFlight[i]
-                      << " (s=" << static_cast<unsigned short>(fEventStates[i].load(std::memory_order_acquire))
-                      << ")\t";
-          }
-        }
-        std::cerr << std::endl;
-      }
+      // TODO
+      // if (fDebugLevel >= 3 && inFlight > 0 || (fDebugLevel >= 2 && iteration % 500 == 0)) {
+      //   std::cerr << inFlight << " in flight ";
+      //   std::cerr << "(" << gpuState.stats->inFlight[ParticleType::Electron] << " "
+      //             << gpuState.stats->inFlight[ParticleType::Positron] << " "
+      //             << gpuState.stats->inFlight[ParticleType::Gamma] << "),\tqueues:(" << std::setprecision(3)
+      //             << gpuState.stats->queueFillLevel[ParticleType::Electron] << " "
+      //             << gpuState.stats->queueFillLevel[ParticleType::Positron] << " "
+      //             << gpuState.stats->queueFillLevel[ParticleType::Gamma] << ")";
+      //   std::cerr << "\t slots:" << gpuState.stats->slotFillLevel << ", " << numLeaked << " leaked."
+      //             << "\tInjectState: " << static_cast<unsigned int>(gpuState.injectState.load())
+      //             << "\tExtractState: " << static_cast<unsigned int>(gpuState.extractState.load())
+      //             << "\tHitBuffer: " << gpuState.stats->hitBufferOccupancy;
+      //   if (fDebugLevel >= 4) {
+      //     std::cerr << "\n\tper event: ";
+      //     for (unsigned int i = 0; i < fNThread; ++i) {
+      //       std::cerr << i << ": " << gpuState.stats->perEventInFlight[i]
+      //                 << " (s=" << static_cast<unsigned short>(fEventStates[i].load(std::memory_order_acquire))
+      //                 << ")\t";
+      //     }
+      //   }
+      //   std::cerr << std::endl;
+      // }
 
 #ifndef NDEBUG
       // *** Check slots ***
@@ -1008,7 +1043,8 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
     ClearAllQueues<<<1, 1, 0, gpuState.stream>>>(queues);
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 
-    if (fDebugLevel > 2) std::cout << "End transport loop.\n";
+    // TODO
+    // if (fDebugLevel > 2) std::cout << "End transport loop.\n";
   }
 
   hitProcessing->keepRunning = false;
@@ -1016,33 +1052,19 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
   hitProcessingThread.join();
 
   // Free device memory:
-  fGPUstate = nullptr;
+  // TODO: Do this from the caller if possible, doesn't make sense here
+  // fGPUstate = nullptr;
 }
 
-std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId)
+std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId, GPUstate *gpuState)
 {
-  return fGPUstate->fHitScoring->GetNextHitsVector(threadId);
+  return gpuState->fHitScoring->GetNextHitsVector(threadId);
 }
 
-void HitProcessingLoop(HitProcessingContext *const context)
+std::thread LaunchGPUWorker(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer& trackBuffer, GPUstate *gpuStatePtr,
+                    int adeptSeed)
 {
-  while (context->keepRunning) {
-    std::unique_lock lock(context->mutex);
-    context->cv.wait(lock);
-
-    fGPUstate->fHitScoring->TransferHitsToHost(context->hitTransferStream);
-    const bool haveNewHits = fGPUstate->fHitScoring->ProcessHits();
-
-    if (haveNewHits) {
-      AdvanceEventStates(EventState::FlushingHits, EventState::HitsFlushed);
-      fCV_G4Workers.notify_all();
-    }
-  }
-}
-
-std::thread LaunchGPUWorker()
-{
-  std::thread{&TransportLoop};
+  std::thread{&TransportLoop, trackCapacity, scoringCapacity, numThreads, trackBuffer, *gpuStatePtr, adeptSeed};
 }
 
 void FreeGPU(GPUstate &gpuState, G4HepEmState &g4hepem_state, std::thread &gpuWorker)
@@ -1055,7 +1077,9 @@ void FreeGPU(GPUstate &gpuState, G4HepEmState &g4hepem_state, std::thread &gpuWo
   COPCORE_CUDA_CHECK(cudaFree(volAux));
 
   // Free resources.
-  gpuState.reset();
+  // TODO: Try to use ResourceManager for this pointer
+  // gpuState.reset();
+  cudaFree(gpuState);
 
   // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport,
   // check if there's any further cleanup required
@@ -1086,14 +1110,6 @@ void InitVolAuxArray(adeptint::VolAuxArray &array)
   COPCORE_CUDA_CHECK(cudaMemcpyToSymbol(gVolAuxData, &array.fAuxData_dev, sizeof(VolAuxData *)));
 }
 
-/// Communication with the hit processing thread.
-struct HitProcessingContext {
-  cudaStream_t hitTransferStream;
-  std::condition_variable cv{};
-  std::mutex mutex{};
-  std::atomic_bool keepRunning = true;
-};
-
 /// Initialise the track buffers used to communicate between host and device.
 TrackBuffer::TrackBuffer(unsigned int numToDevice, unsigned int numFromDevice, unsigned short nThread)
     : fNumToDevice{numToDevice}, fNumFromDevice{numFromDevice}, fromDeviceBuffers(nThread)
@@ -1102,22 +1118,31 @@ TrackBuffer::TrackBuffer(unsigned int numToDevice, unsigned int numFromDevice, u
   // Double buffer for lock-free host runs:
   COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, 2 * numToDevice * sizeof(TrackDataWithIDs)));
   COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numToDevice * sizeof(TrackDataWithIDs)));
-  toDevice_host.reset(hostPtr);
-  toDevice_dev.reset(devPtr);
+  
+  //TODO: Check whether we can use ResourceManager
+  toDevice_host = hostPtr;
+  toDevice_dev = devPtr;
+  // toDevice_host.reset(hostPtr);
+  // toDevice_dev.reset(devPtr);
 
   COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, numFromDevice * sizeof(TrackDataWithIDs)));
   COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numFromDevice * sizeof(TrackDataWithIDs)));
-  fromDevice_host.reset(hostPtr);
-  fromDevice_dev.reset(devPtr);
+  fromDevice_host = hostPtr;
+  fromDevice_dev = devPtr;
+  // fromDevice_host.reset(hostPtr);
+  // fromDevice_dev.reset(devPtr);
 
   unsigned int *nFromDevice = nullptr;
   COPCORE_CUDA_CHECK(cudaMallocHost(&nFromDevice, sizeof(unsigned int)));
-  nFromDevice_host.reset(nFromDevice);
+  nFromDevice_host = nFromDevice;
+  // nFromDevice_host.reset(nFromDevice);
 
-  toDeviceBuffer[0].tracks    = toDevice_host.get();
+  toDeviceBuffer[0].tracks    = toDevice_host;
+  // toDeviceBuffer[0].tracks    = toDevice_host.get();
   toDeviceBuffer[0].maxTracks = numToDevice;
   toDeviceBuffer[0].nTrack    = 0;
-  toDeviceBuffer[1].tracks    = toDevice_host.get() + numToDevice;
+  toDeviceBuffer[1].tracks    = toDevice_host + numToDevice;
+  // toDeviceBuffer[1].tracks    = toDevice_host.get() + numToDevice;
   toDeviceBuffer[1].maxTracks = numToDevice;
   toDeviceBuffer[1].nTrack    = 0;
 }

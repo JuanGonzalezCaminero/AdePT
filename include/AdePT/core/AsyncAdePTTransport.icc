@@ -45,7 +45,8 @@ G4HepEmState *InitG4HepEm();
 void FlushScoring(AdePTScoring &);
 // void TransportLoop(int, int, int, TrackBuffer&, GPUstate *, int, int);
 std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int, AsyncAdePT::GPUstate *);
-std::thread LaunchGPUWorker(int, int, int, AsyncAdePT::TrackBuffer&, AsyncAdePT::GPUstate *, int);
+std::thread LaunchGPUWorker(int, int, int, AsyncAdePT::TrackBuffer&, AsyncAdePT::GPUstate *, 
+                            std::vector<std::atomic<AsyncAdePT::EventState>>&, std::condition_variable&, int);
 void FreeGPU(AsyncAdePT::GPUstate &, G4HepEmState &, std::thread &);
 }
 
@@ -241,7 +242,7 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
   // with the number of threads.
   fBuffer = std::make_unique<TrackBuffer>(8192 * fNThread, 1024 * fNThread, fNThread);
 
-  fGPUWorker = async_adept_impl::LaunchGPUWorker(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fGPUstate, fAdePTSeed);
+  fGPUWorker = async_adept_impl::LaunchGPUWorker(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fGPUstate, fEventStates, fCV_G4Workers,fAdePTSeed);
   
   // std::thread{&AsyncAdePTTransport::TransportLoop, this};
 }

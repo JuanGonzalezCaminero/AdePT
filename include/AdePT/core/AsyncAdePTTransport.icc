@@ -38,17 +38,19 @@
 // }
 
 /// Forward declarations
-namespace async_adept_impl
-{
+namespace async_adept_impl {
 bool InitializeField(double);
 G4HepEmState *InitG4HepEm();
 void FlushScoring(AdePTScoring &);
 // void TransportLoop(int, int, int, TrackBuffer&, GPUstate *, int, int);
+// AsyncAdePT::GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads,
+//                                     AsyncAdePT::TrackBuffer &trackBuffer, std::vector<AdePTScoring *> &scoring);
 std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int, AsyncAdePT::GPUstate *);
-std::thread LaunchGPUWorker(int, int, int, AsyncAdePT::TrackBuffer&, AsyncAdePT::GPUstate *, 
-                            std::vector<std::atomic<AsyncAdePT::EventState>>&, std::condition_variable&, int);
+std::thread LaunchGPUWorker(int, int, int, AsyncAdePT::TrackBuffer &, AsyncAdePT::GPUstate *,
+                            std::vector<std::atomic<AsyncAdePT::EventState>> &, std::condition_variable &, 
+                            std::vector<AdePTScoring *>&, int);
 void FreeGPU(AsyncAdePT::GPUstate &, G4HepEmState &, std::thread &);
-}
+} // namespace async_adept_impl
 
 namespace AsyncAdePT {
 
@@ -94,16 +96,12 @@ std::ostream &operator<<(std::ostream &stream, TrackDataWithIDs const &track)
 
 template <typename IntegrationLayer>
 AsyncAdePTTransport<IntegrationLayer>::AsyncAdePTTransport(AdePTConfiguration &configuration)
-: fNThread{(ushort)configuration.GetNumThreads()},
-  fTrackCapacity{(uint)(1024 * 1024 * configuration.GetMillionsOfTrackSlots())},
-  fScoringCapacity{(uint)(1024 * 1024 * configuration.GetMillionsOfHitSlots())},
-  fDebugLevel{0},
-  fIntegrationLayerObjects(fNThread),
-  fEventStates(fNThread),
-  fGPUNetEnergy(fNThread, 0.0),
-  fTrackInAllRegions{configuration.GetTrackInAllRegions()},
-  fGPURegionNames{configuration.GetGPURegionNames()},
-  fCUDAStackLimit{configuration.GetCUDAStackLimit()}
+    : fNThread{(ushort)configuration.GetNumThreads()},
+      fTrackCapacity{(uint)(1024 * 1024 * configuration.GetMillionsOfTrackSlots())},
+      fScoringCapacity{(uint)(1024 * 1024 * configuration.GetMillionsOfHitSlots())}, fDebugLevel{0},
+      fIntegrationLayerObjects(fNThread), fEventStates(fNThread), fGPUNetEnergy(fNThread, 0.0),
+      fTrackInAllRegions{configuration.GetTrackInAllRegions()}, fGPURegionNames{configuration.GetGPURegionNames()},
+      fCUDAStackLimit{configuration.GetCUDAStackLimit()}
 {
   // fNThread = configuration.GetNumThreads();
   // fTrackCapacity = 1024 * 1024 * configuration.GetMillionsOfTrackSlots();
@@ -138,9 +136,10 @@ AsyncAdePTTransport<IntegrationLayer>::~AsyncAdePTTransport()
 }
 
 template <typename IntegrationLayer>
-void AsyncAdePTTransport<IntegrationLayer>::AddTrack(int pdg, int parentID, double energy, double x, double y, double z, double dirx,
-                                double diry, double dirz, double globalTime, double localTime, double properTime,
-                                int threadId, unsigned int eventId, unsigned int trackId)
+void AsyncAdePTTransport<IntegrationLayer>::AddTrack(int pdg, int parentID, double energy, double x, double y, double z,
+                                                     double dirx, double diry, double dirz, double globalTime,
+                                                     double localTime, double properTime, int threadId,
+                                                     unsigned int eventId, unsigned int trackId)
 {
   if (pdg != 11 && pdg != -11 && pdg != 22) {
     G4cerr << __FILE__ << ":" << __LINE__ << ": Only supporting EM tracks. Got pdgID=" << pdg << "\n";
@@ -178,9 +177,8 @@ bool AsyncAdePTTransport<IntegrationLayer>::InitializeGeometry(const vecgeom::cx
 {
   // Upload geometry to GPU.
   auto &cudaManager = vecgeom::cxx::CudaManager::Instance();
-  if(fCUDAStackLimit > 0)
-  {
-    std::cout <<  "CUDA Device stack limit: " <<  fCUDAStackLimit << "\n";
+  if (fCUDAStackLimit > 0) {
+    std::cout << "CUDA Device stack limit: " << fCUDAStackLimit << "\n";
     cudaDeviceSetLimit(cudaLimitStackSize, fCUDAStackLimit);
   }
   cudaManager.LoadGeometry(world);
@@ -216,10 +214,12 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
 
   // Initialize G4HepEm
   fIntegrationLayerObjects.front().GetUniformFieldZ();
-  if (!InitializePhysics()) throw std::runtime_error("AsyncAdePTTransport::Initialize cannot initialize physics on GPU");
+  if (!InitializePhysics())
+    throw std::runtime_error("AsyncAdePTTransport::Initialize cannot initialize physics on GPU");
 
   // Initialize field
-  const double bz = fIntegrationLayerObjects[0].GetUniformFieldZ(); // Get the field value from one of the worker threads
+  const double bz =
+      fIntegrationLayerObjects[0].GetUniformFieldZ(); // Get the field value from one of the worker threads
   if (!InitializeField(bz))
     throw std::runtime_error("AdePTTransport<IntegrationLayer>::Initialize cannot initialize field on GPU");
 
@@ -242,8 +242,9 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
   // with the number of threads.
   fBuffer = std::make_unique<TrackBuffer>(8192 * fNThread, 1024 * fNThread, fNThread);
 
-  fGPUWorker = async_adept_impl::LaunchGPUWorker(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fGPUstate, fEventStates, fCV_G4Workers,fAdePTSeed);
-  
+  fGPUWorker = async_adept_impl::LaunchGPUWorker(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fGPUstate,
+                                                 fEventStates, fCV_G4Workers, fScoring, fAdePTSeed);
+
   // std::thread{&AsyncAdePTTransport::TransportLoop, this};
 }
 
@@ -334,7 +335,7 @@ void AsyncAdePTTransport<IntegrationLayer>::Flush(G4int threadId, G4int eventId)
   if (tracks.empty()) {
     async_adept_impl::FlushScoring(*fScoring[threadId]);
 
-    // TODO: Most likely this needs to go to AsyncAdePTTransport in a function that 
+    // TODO: Most likely this needs to go to AsyncAdePTTransport in a function that
     // we will forward-declare here (Otherwise AdePTScoring is undefined)
     fEventStates[threadId].store(EventState::ScoringRetrieved, std::memory_order_release);
   }

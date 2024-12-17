@@ -16,7 +16,6 @@
 #include <AdePT/core/AdePTTransportInterface.hh>
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AdePTConfiguration.hh>
-
 #include <AdePT/core/AsyncAdePTTransportStruct.hh>
 
 // #include <AdePT/core/PerEventScoringImpl.cuh>
@@ -30,6 +29,7 @@
 #include <thread>
 #include <unordered_map>
 
+#define AdePTScoring PerEventScoring
 struct AdePTScoring;
 
 class G4Region;
@@ -47,7 +47,6 @@ void InitVolAuxArray(adeptint::VolAuxArray &array);
 template <typename IntegrationLayer>
 class AsyncAdePTTransport : public AdePTTransportInterface {
 public:
-  static constexpr int kMaxThreads = 256;
   static inline uint64_t fAdePTSeed = 1234567;
 
 private:

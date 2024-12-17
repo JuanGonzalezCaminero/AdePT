@@ -264,22 +264,21 @@ __device__ void AccountProduced(AsyncAdePT::PerEventScoring *scoring, int num_el
   atomicAdd(&scoring->fGlobalCounters.numGammas, num_gam);
 }
 
+// template <>
+// inline void EndOfTransport(AsyncAdePT::PerEventScoring &scoring, AsyncAdePT::PerEventScoring *, cudaStream_t *, IntegrationLayer *)
+// {
+//   scoring.CopyToHost();
+//   scoring.ClearGPU();
 
-template <typename IntegrationLayer>
-inline void EndOfTransport(AsyncAdePT::PerEventScoring &scoring, AsyncAdePT::PerEventScoring *, cudaStream_t *, IntegrationLayer *)
-{
-  scoring.CopyToHost();
-  scoring.ClearGPU();
+//   // TODO: this needs to be done by the caller, or the net energy array moved to the scoring data
+//   // fGPUNetEnergy[threadId] = 0.;
 
-  // TODO: this needs to be done by the caller, or the net energy array moved to the scoring data
-  // fGPUNetEnergy[threadId] = 0.;
-
-  // TODO: This isn't critical, if needed we need to add a debug level parameter to the interface
-  // if (fDebugLevel >= 2) {
-  //   G4cout << "\n\tScoring for event " << eventId << G4endl;
-  //   scoring.Print();
-  // }
-}
+//   // TODO: This isn't critical, if needed we need to add a debug level parameter to the interface
+//   // if (fDebugLevel >= 2) {
+//   //   G4cout << "\n\tScoring for event " << eventId << G4endl;
+//   //   scoring.Print();
+//   // }
+// }
 
 } // namespace adept_scoring
 

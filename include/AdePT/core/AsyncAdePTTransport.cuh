@@ -4,15 +4,6 @@
 #ifndef ASYNC_ADEPT_TRANSPORT_CUH
 #define ASYNC_ADEPT_TRANSPORT_CUH
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-// TODO: This include can't be here (because it also includes the implementation, and this
-// can't be compiled with nvcc, all implementations of AsyncAdePTTransport members need to become
-// free functions)
-// #include <AdePT/core/AsyncAdePTTransport.hh>
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
 #include <AdePT/core/AsyncAdePTTransportStruct.cuh>
 #include <AdePT/core/AsyncAdePTTransportStruct.hh>
 #include <AdePT/core/CommonStruct.h>
@@ -384,7 +375,7 @@ __global__ void InitSlotManagers(SlotManager *mgr, std::size_t N)
 /// WIP: Free functions implementing the CUDA parts
 namespace async_adept_impl {
 
-static G4HepEmState *InitG4HepEm()
+G4HepEmState *InitG4HepEm()
 {
   auto state = new G4HepEmState;
   InitG4HepEmState(state);
@@ -426,10 +417,11 @@ bool InitializeField(double bz)
   return true;
 }
 
-template <typename IntegrationLayer>
 void FlushScoring(AdePTScoring &scoring)
 {
-  adept_scoring::EndOfTransport<IntegrationLayer>(scoring, nullptr, nullptr, nullptr);
+  scoring.CopyToHost();
+  scoring.ClearGPU();
+  // adept_scoring::EndOfTransport(scoring, nullptr, nullptr, nullptr);
 }
 
 /// Allocate memory on device, as well as streams and cuda events to synchronise kernels.

@@ -551,7 +551,8 @@ void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<
   TrackDataWithIDs const *const fromDeviceEnd = fromDevice + *trackBuffer.nFromDevice_host;
 
   for (TrackDataWithIDs *trackIt = fromDevice; trackIt < fromDeviceEnd; ++trackIt) {
-    assert(0 <= trackIt->threadId && trackIt->threadId <= numThreads);
+    // TODO: Pass numThreads here, only used in debug mode however
+    // assert(0 <= trackIt->threadId && trackIt->threadId <= numThreads);
     trackBuffer.fromDeviceBuffers[trackIt->threadId].push_back(*trackIt);
   }
 

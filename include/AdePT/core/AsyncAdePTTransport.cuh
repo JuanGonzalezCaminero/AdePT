@@ -578,7 +578,7 @@ void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<
 #endif
 }
 
-void HitProcessingLoop(HitProcessingContext *const context, GPUstate *gpuState,
+void HitProcessingLoop(HitProcessingContext *const context, GPUstate &gpuState,
                        std::vector<std::atomic<EventState>> &eventStates, 
                        std::condition_variable &cvG4Workers)
 {
@@ -586,8 +586,8 @@ void HitProcessingLoop(HitProcessingContext *const context, GPUstate *gpuState,
     std::unique_lock lock(context->mutex);
     context->cv.wait(lock);
 
-    gpuState->fHitScoring->TransferHitsToHost(context->hitTransferStream);
-    const bool haveNewHits = gpuState->fHitScoring->ProcessHits();
+    gpuState.fHitScoring->TransferHitsToHost(context->hitTransferStream);
+    const bool haveNewHits = gpuState.fHitScoring->ProcessHits();
 
     if (haveNewHits) {
       AdvanceEventStates(EventState::FlushingHits, EventState::HitsFlushed, eventStates);
@@ -647,7 +647,10 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
   };
 
   std::unique_ptr<HitProcessingContext> hitProcessing{new HitProcessingContext{transferStream}};
-  std::thread hitProcessingThread{&HitProcessingLoop, hitProcessing.get(), &gpuState, std::ref(eventStates), std::ref(cvG4Workers)};
+  std::thread hitProcessingThread{&HitProcessingLoop, (HitProcessingContext*)hitProcessing.get(), 
+                                                      std::ref(gpuState), 
+                                                      std::ref(eventStates), 
+                                                      std::ref(cvG4Workers)};
 
   auto computeThreadsAndBlocks = [](unsigned int nParticles) -> std::pair<unsigned int, unsigned int> {
     constexpr int TransportThreads             = 256;
@@ -1088,8 +1091,8 @@ std::thread LaunchGPUWorker(int trackCapacity, int scoringCapacity, int numThrea
                             GPUstate *gpuStatePtr, std::vector<std::atomic<EventState>> &eventStates,
                             std::condition_variable &cvG4Workers, std::vector<AdePTScoring *> &scoring, int adeptSeed)
 {
-  return std::thread{&TransportLoop, trackCapacity, scoringCapacity, numThreads, trackBuffer,
-                     *gpuStatePtr, eventStates, scoring, adeptSeed};
+  return std::thread{&TransportLoop, trackCapacity, scoringCapacity, numThreads, std::ref(trackBuffer),
+                     gpuStatePtr, std::ref(eventStates), std::ref(cvG4Workers), std::ref(scoring), adeptSeed};
 }
 
 void FreeGPU(GPUstate &gpuState, G4HepEmState &g4hepem_state, std::thread &gpuWorker)

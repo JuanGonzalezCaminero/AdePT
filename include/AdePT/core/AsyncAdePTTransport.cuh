@@ -49,8 +49,6 @@
 
 using namespace AsyncAdePT;
 
-using AdePTScoring = PerEventScoring;
-
 /// Communication with the hit processing thread.
 struct HitProcessingContext {
   cudaStream_t hitTransferStream;

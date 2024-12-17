@@ -17,8 +17,7 @@
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AdePTConfiguration.hh>
 #include <AdePT/core/AsyncAdePTTransportStruct.hh>
-
-// #include <AdePT/core/PerEventScoringImpl.cuh>
+#include <AdePT/core/PerEventScoringStruct.cuh>
 
 #include <VecGeom/base/Config.h>
 #include <VecGeom/management/CudaManager.h> // forward declares vecgeom::cxx::VPlacedVolume
@@ -29,8 +28,7 @@
 #include <thread>
 #include <unordered_map>
 
-#define AdePTScoring PerEventScoring
-struct AdePTScoring;
+// struct AdePTScoring;
 
 class G4Region;
 class G4VPhysicalVolume;

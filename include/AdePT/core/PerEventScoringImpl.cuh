@@ -4,9 +4,10 @@
 #ifndef PER_EVENT_SCORING_CUH
 #define PER_EVENT_SCORING_CUH
 
+#include <AdePT/core/PerEventScoringStruct.cuh>
 #include <AdePT/base/ResourceManagement.cuh>
 #include <AdePT/core/AdePTScoringTemplate.cuh>
-#include <AdePT/core/HostScoringStruct.cuh>
+#include <AdePT/core/ScoringCommons.hh>
 #include <AdePT/copcore/Global.h>
 
 #include <VecGeom/navigation/NavigationState.h>
@@ -173,35 +174,54 @@ public:
   }
 };
 
-struct PerEventScoring {
-  GlobalCounters fGlobalCounters;
-  PerEventScoring *const fScoring_dev;
+// Implement Cuda-dependent functionality from PerEventScoring
 
-  PerEventScoring(PerEventScoring *gpuScoring) : fScoring_dev{gpuScoring} { ClearGPU(); }
-  PerEventScoring(PerEventScoring &&other) = default;
-  ~PerEventScoring()                       = default;
+void PerEventScoring::CopyToHost(cudaStream_t cudaStream)
+{
+  const auto oldPointer = fScoring_dev;
+  COPCORE_CUDA_CHECK(
+      cudaMemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters), cudaMemcpyDeviceToHost, cudaStream));
+  COPCORE_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+  assert(oldPointer == fScoring_dev);
+  (void)oldPointer;
+}
 
-  /// @brief Copy hits to host for a single event
-  void CopyToHost(cudaStream_t cudaStream = 0)
-  {
-    const auto oldPointer = fScoring_dev;
-    COPCORE_CUDA_CHECK(
-        cudaMemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters), cudaMemcpyDeviceToHost, cudaStream));
-    COPCORE_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-    assert(oldPointer == fScoring_dev);
-    (void)oldPointer;
-  }
+void PerEventScoring::ClearGPU(cudaStream_t cudaStream)
+{
+  COPCORE_CUDA_CHECK(cudaMemsetAsync(fScoring_dev, 0, sizeof(GlobalCounters), cudaStream));
+  COPCORE_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+}
 
-  /// @brief Clear hits on device to reuse for next event
-  void ClearGPU(cudaStream_t cudaStream = 0)
-  {
-    COPCORE_CUDA_CHECK(cudaMemsetAsync(fScoring_dev, 0, sizeof(GlobalCounters), cudaStream));
-    COPCORE_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-  }
 
-  /// @brief Print scoring info
-  void Print() { fGlobalCounters.Print(); };
-};
+// struct PerEventScoring {
+//   GlobalCounters fGlobalCounters;
+//   PerEventScoring *const fScoring_dev;
+
+//   PerEventScoring(PerEventScoring *gpuScoring) : fScoring_dev{gpuScoring} { ClearGPU(); }
+//   PerEventScoring(PerEventScoring &&other) = default;
+//   ~PerEventScoring()                       = default;
+
+//   /// @brief Copy hits to host for a single event
+//   void CopyToHost(cudaStream_t cudaStream = 0)
+//   {
+//     const auto oldPointer = fScoring_dev;
+//     COPCORE_CUDA_CHECK(
+//         cudaMemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters), cudaMemcpyDeviceToHost, cudaStream));
+//     COPCORE_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+//     assert(oldPointer == fScoring_dev);
+//     (void)oldPointer;
+//   }
+
+//   /// @brief Clear hits on device to reuse for next event
+//   void ClearGPU(cudaStream_t cudaStream = 0)
+//   {
+//     COPCORE_CUDA_CHECK(cudaMemsetAsync(fScoring_dev, 0, sizeof(GlobalCounters), cudaStream));
+//     COPCORE_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+//   }
+
+//   /// @brief Print scoring info
+//   void Print() { fGlobalCounters.Print(); };
+// };
 
 } // namespace AsyncAdePT
 

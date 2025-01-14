@@ -109,7 +109,7 @@ if(ADEPT_USE_SURF)
     set(ADEPT_USE_SURF OFF CACHE BOOL "Disable using the surface model" FORCE)
   endif()
 else()
-  message(STATUS "${Green}Using the solid model in VecGeom${c}")
+  message(STATUS "${Green}Using the solid model in VecGeom${ColorReset}")
 endif()
 
 # Find Geant4, optional for now

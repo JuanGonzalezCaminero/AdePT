@@ -41,16 +41,9 @@
 //                                 fHitCapacity, 
 //                                 CompareGPUHits{});
 
-namespace AsyncAdePT {
+#include <AdePT/core/CublasWrappers.cuh>
 
-template <typename KeyIteratorT, typename OffsetT, typename CompareOpT>
-cudaError_t CublasSortKeys(
-    void* d_temp_storage,
-    std::size_t& temp_storage_bytes,
-    KeyIteratorT d_keys,
-    OffsetT num_items,
-    CompareOpT compare_op,
-    cudaStream_t stream = 0);
+namespace AsyncAdePT {
 
 // cudaError_t CublasSortKeys(void*, &std::size_t, fGPUHitBuffer_dev.get(), unsigned int, CompareGPUHits{});
 
@@ -133,7 +126,7 @@ public:
     // TODO: Enable sorting
     // result = cub::DeviceMergeSort::SortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
     //                                         CompareGPUHits{});
-    result = CublasSortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
+    result = cublas_wrappers::CublasSortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
                                              CompareGPUHits{});
     // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space for hit sorting on device."};

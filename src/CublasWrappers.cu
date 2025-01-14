@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2023 CERN
 // SPDX-License-Identifier: Apache-2.0
 
-#include <cub/device/device_merge_sort.cuh>
+// #include <cub/device/device_merge_sort.cuh>
 // #include <AdePT/core/ScoringCommons.hh>
+#include <AdePT/core/CublasWrappers.cuh>
 #include <AdePT/core/PerEventScoringImpl.cuh>
+#include <stdio.h>
 
 // template <>
 // cudaError_t cub::DeviceMergeSort::SortKeys(
@@ -14,8 +16,11 @@
 //     AsyncAdePT::CompareGPUHits,
 //     cudaStream_t);
 
+
+namespace cublas_wrappers
+{
 template <typename KeyIteratorT, typename OffsetT, typename CompareOpT>
-cudaError_t AsyncAdePT::CublasSortKeys(
+cudaError_t CublasSortKeys(
     void* d_temp_storage,
     std::size_t& temp_storage_bytes,
     KeyIteratorT d_keys,
@@ -24,4 +29,5 @@ cudaError_t AsyncAdePT::CublasSortKeys(
     cudaStream_t stream)
 {
     printf("CublasSortKeys Called\n");   
+}
 }

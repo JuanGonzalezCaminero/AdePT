@@ -109,7 +109,7 @@ if(ADEPT_USE_SURF)
     set(ADEPT_USE_SURF OFF CACHE BOOL "Disable using the surface model" FORCE)
   endif()
 else()
-  message(STATUS "${Green}Using the solid model in VecGeom${ColorReset}")
+  message(STATUS "${Green}Using the solid model in VecGeom${c}")
 endif()
 
 # Find Geant4, optional for now
@@ -169,6 +169,7 @@ set(ADEPT_G4_INTEGRATION_SRCS
   src/HepEMPhysics.cc
   src/AdePTGeant4Integration.cpp
   src/AdePTConfigurationMessenger.cc
+  src/CublasCompilation.cu
 )
 
 add_library(CopCore INTERFACE)
@@ -210,8 +211,9 @@ set_target_properties(AdePT_G4_integration
 option(ASYNC_MODE OFF "Enable the async transport backend")
 if(ASYNC_MODE)
   add_compile_definitions(ASYNC_MODE)
+  message(STATUS "${Green}Using the asynchronous transport backend${ColorReset}")
 else()
-  message(STATUS "Async backend is disabled")
+  message(STATUS "${Red}Async backend is disabled${ColorReset}")
 endif()
 
 # Optional library to activate NVTX annotations for profiling:

@@ -7,8 +7,9 @@
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AsyncAdePTTransportStruct.hh>
 // #include <AdePT/core/AsyncAdePTTransport.hh>
+// namespace cuda_protected{
 #include <AdePT/core/PerEventScoringImpl.cuh>
-
+// }
 #include "AsyncTrack.cuh"
 #include <AdePT/base/SlotManager.cuh>
 #include <AdePT/base/ResourceManagement.cuh>

@@ -12,7 +12,9 @@
 
 #include <VecGeom/navigation/NavigationState.h>
 
-// #include <cub/device/device_merge_sort.cuh>
+// namespace global_std = ::std;
+
+// #include <thrust/sort.h>
 
 #include <atomic>
 #include <deque>
@@ -22,7 +24,35 @@
 #include <chrono>
 #include <thread>
 
+// namespace std = ::std;
+// #ifdef __CUDA_ARCH__
+// #include <cub/device/device_merge_sort.cuh>
+// #endif
+
+// namespace cub
+// {
+//   struct DeviceMergeSort;
+// }
+
+// Forward declarations of CUDA functions
+// cub::DeviceMergeSort::SortKeys(nullptr, 
+//                                 fGPUSortAuxMemorySize, 
+//                                 fGPUHitBuffer_dev.get(), 
+//                                 fHitCapacity, 
+//                                 CompareGPUHits{});
+
 namespace AsyncAdePT {
+
+template <typename KeyIteratorT, typename OffsetT, typename CompareOpT>
+cudaError_t CublasSortKeys(
+    void* d_temp_storage,
+    std::size_t& temp_storage_bytes,
+    KeyIteratorT d_keys,
+    OffsetT num_items,
+    CompareOpT compare_op,
+    cudaStream_t stream = 0);
+
+// cudaError_t CublasSortKeys(void*, &std::size_t, fGPUHitBuffer_dev.get(), unsigned int, CompareGPUHits{});
 
 // Comparison for sorting tracks into events on device:
 struct CompareGPUHits {
@@ -86,6 +116,7 @@ class HitScoring {
   }
 
 public:
+  // HitScoring(unsigned int hitCapacity, unsigned int nThread);
   HitScoring(unsigned int hitCapacity, unsigned int nThread) : fHitCapacity{hitCapacity}, fHitQueues(nThread)
   {
     // We use a single allocation for both buffers:
@@ -102,10 +133,14 @@ public:
     // TODO: Enable sorting
     // result = cub::DeviceMergeSort::SortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
     //                                         CompareGPUHits{});
+    result = CublasSortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
+                                             CompareGPUHits{});
+    // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space for hit sorting on device."};
 
     std::byte *gpuSortingMem;
     result = cudaMalloc(&gpuSortingMem, fGPUSortAuxMemorySize);
+    // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space to allocate hit sorting buffer."};
     fGPUSortAuxMemory.reset(gpuSortingMem);
 
@@ -176,7 +211,8 @@ public:
     return std::any_of(fBuffers.begin(), fBuffers.end(),
                        [](const auto &handle) { return handle.state == BufferHandle::State::Free; });
   }
-  
+
+  // void TransferHitsToHost(cudaStream_t cudaStreamForHitCopy);
   void TransferHitsToHost(cudaStream_t cudaStreamForHitCopy)
   {
     for (auto &buffer : fBuffers) {

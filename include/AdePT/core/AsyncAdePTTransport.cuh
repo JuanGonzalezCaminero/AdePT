@@ -8,7 +8,9 @@
 #include <AdePT/core/AsyncAdePTTransportStruct.hh>
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AdePTConfiguration.hh>
+// namespace cuda_protected{
 #include <AdePT/core/PerEventScoringImpl.cuh>
+// }
 #include <AdePT/base/Atomic.h>
 #include <AdePT/base/MParray.h>
 #include <AdePT/copcore/Global.h>
@@ -25,11 +27,6 @@
 #include <VecGeom/backend/cuda/Interface.h>
 #endif
 
-#include <G4Threading.hh>
-#include <G4TransportationManager.hh>
-#include <G4UniformMagField.hh>
-#include <G4FieldManager.hh>
-
 #include <G4HepEmState.hh>
 #include <G4HepEmData.hh>
 #include <G4HepEmState.hh>
@@ -42,6 +39,7 @@
 #include <stdio.h>
 #include <vector>
 #include <numeric>
+// #include <cuda/std/numeric>
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
@@ -426,7 +424,7 @@ void FlushScoring(AdePTScoring &scoring)
 /// If successful, this will initialise the member fGPUState.
 /// If memory allocation fails, an exception is thrown. In this case, the caller has to
 /// try again after some wait time or with less transport slots.
-GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
+__host__ GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
                         std::vector<AdePTScoring *> &scoring)
 {
   // auto gpuState_ptr   = std::make_unique<GPUstate>();
@@ -535,6 +533,7 @@ GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, 
   // fGPUstate = gpuState_ptr;
   return gpuState_ptr;
 }
+
 
 void AdvanceEventStates(EventState oldState, EventState newState, std::vector<std::atomic<EventState>> &eventStates)
 {

@@ -36,11 +36,6 @@
 
 namespace AsyncAdePT {
 
-// Comparison for sorting tracks into events on device:
-struct CompareGPUHits {
-  __device__ bool operator()(const GPUHit &lhs, const GPUHit &rhs) const { return lhs.fEventId < rhs.fEventId; }
-};
-
 /// Struct holding GPU hits to be used both on host and device.
 struct HitScoringBuffer {
   GPUHit *hitBuffer_dev     = nullptr;

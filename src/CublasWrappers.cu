@@ -3,7 +3,6 @@
 
 #include <cub/device/device_merge_sort.cuh>
 #include <AdePT/core/CublasWrappers.cuh>
-#include <AdePT/core/PerEventScoringImpl.cuh>
 #include <AdePT/core/ScoringCommons.hh>
 #include <stdio.h>
 
@@ -26,12 +25,12 @@ cudaError_t CublasSortKeys(void *d_temp_storage, std::size_t &temp_storage_bytes
 }
 
 // Explicit instantiations of these templates
-template cudaError_t CublasSortKeys<GPUHit*, unsigned int, AsyncAdePT::CompareGPUHits>
+template cudaError_t CublasSortKeys<GPUHit*, unsigned int, CompareGPUHits>
                                         (void*, 
                                         unsigned long&, 
                                         GPUHit*, 
                                         unsigned int, 
-                                        AsyncAdePT::CompareGPUHits, 
+                                        CompareGPUHits, 
                                         CUstream_st*);
 
 } // namespace cublas_wrappers

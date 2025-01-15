@@ -164,11 +164,11 @@ endif()
 #----------------------------------------------------------------------------#
 set(ADEPT_G4_INTEGRATION_SRCS
   src/AdePTTrackingManager.cc
-  src/AdePTTrackingManager.cu
   src/AdePTPhysics.cc
   src/HepEMPhysics.cc
   src/AdePTGeant4Integration.cpp
   src/AdePTConfigurationMessenger.cc
+  src/AdePTTrackingManager.cu
   src/CublasWrappers.cu
 )
 

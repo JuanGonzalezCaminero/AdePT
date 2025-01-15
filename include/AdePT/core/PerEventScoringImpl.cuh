@@ -12,9 +12,8 @@
 
 #include <VecGeom/navigation/NavigationState.h>
 
-// namespace global_std = ::std;
 
-// #include <thrust/sort.h>
+
 
 #include <atomic>
 #include <deque>
@@ -24,28 +23,18 @@
 #include <chrono>
 #include <thread>
 
-// namespace std = ::std;
+// namespace global_std = ::std;
+
 // #ifdef __CUDA_ARCH__
 // #include <cub/device/device_merge_sort.cuh>
 // #endif
 
-// namespace cub
-// {
-//   struct DeviceMergeSort;
-// }
+// #include <thrust/sort.h>
 
 // Forward declarations of CUDA functions
-// cub::DeviceMergeSort::SortKeys(nullptr, 
-//                                 fGPUSortAuxMemorySize, 
-//                                 fGPUHitBuffer_dev.get(), 
-//                                 fHitCapacity, 
-//                                 CompareGPUHits{});
-
 #include <AdePT/core/CublasWrappers.cuh>
 
 namespace AsyncAdePT {
-
-// cudaError_t CublasSortKeys(void*, &std::size_t, fGPUHitBuffer_dev.get(), unsigned int, CompareGPUHits{});
 
 // Comparison for sorting tracks into events on device:
 struct CompareGPUHits {

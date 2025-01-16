@@ -745,7 +745,8 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
           // TODO: ResourceManager
           COPCORE_CUDA_CHECK(
               cudaMemcpyAsync(trackBuffer.toDevice_dev, toDevice.tracks,
-                              // COPCORE_CUDA_CHECK(cudaMemcpyAsync(trackBuffer.toDevice_dev.get(), toDevice.tracks,
+          // COPCORE_CUDA_CHECK(
+          //  cudaMemcpyAsync(trackBuffer.toDevice_dev.get(), toDevice.tracks,
                               nInject * sizeof(TrackDataWithIDs), cudaMemcpyHostToDevice, transferStream));
           // Mark end of copy operation:
           COPCORE_CUDA_CHECK(cudaEventRecord(cudaEvent, transferStream));

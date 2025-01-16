@@ -20,14 +20,13 @@ template <typename KeyIteratorT, typename OffsetT, typename CompareOpT>
 cudaError_t CublasSortKeys(void *d_temp_storage, std::size_t &temp_storage_bytes, KeyIteratorT d_keys,
                            OffsetT num_items, CompareOpT compare_op, cudaStream_t stream)
 {
+    printf("Cublas sort called\n");
     return cub::DeviceMergeSort::SortKeys(d_temp_storage, 
-                                        temp_storage_bytes, 
-                                        d_keys, 
-                                        num_items,
-                                        compare_op,
-                                        stream);
-//   printf("CublasSortKeys Called\n");
-//   return cudaError_t{};
+                                          temp_storage_bytes, 
+                                          d_keys, 
+                                          num_items,
+                                          compare_op,
+                                          stream);
 }
 
 // Explicit instantiations of these templates
@@ -35,10 +34,10 @@ cudaError_t CublasSortKeys(void *d_temp_storage, std::size_t &temp_storage_bytes
 // From HitScoring::HitScoring
 template cudaError_t CublasSortKeys<GPUHit*, unsigned int, CompareGPUHits>
                                         (void*, 
-                                        unsigned long&, 
+                                        std::size_t &, 
                                         GPUHit*, 
                                         unsigned int,
                                         CompareGPUHits, 
-                                        CUstream_st*);
+                                        cudaStream_t);
 
 } // namespace cublas_wrappers

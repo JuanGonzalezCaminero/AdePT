@@ -115,6 +115,9 @@ public:
     // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space for hit sorting on device."};
 
+    // DEBUG
+    printf("%u Bytes allocated for sorting hits\n", fGPUSortAuxMemorySize);
+
     std::byte *gpuSortingMem;
     result = cudaMalloc(&gpuSortingMem, fGPUSortAuxMemorySize);
     // result = cudaSuccess;
@@ -200,7 +203,7 @@ public:
 
       auto bufferBegin = buffer.hitScoringInfo.hitBuffer_dev;
 
-      // TODO: Sorting is disabled for now
+      // TODO: Enable sorting
       // cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
       //                               buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
       cublas_wrappers::CublasSortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,

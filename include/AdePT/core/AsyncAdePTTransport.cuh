@@ -8,9 +8,6 @@
 #include <AdePT/core/AsyncAdePTTransportStruct.hh>
 #include <AdePT/core/CommonStruct.h>
 #include <AdePT/core/AdePTConfiguration.hh>
-// namespace cuda_protected{
-#include <AdePT/core/PerEventScoringImpl.cuh>
-// }
 #include <AdePT/base/Atomic.h>
 #include <AdePT/base/MParray.h>
 #include <AdePT/copcore/Global.h>
@@ -18,8 +15,10 @@
 #include <AdePT/copcore/Ranluxpp.h>
 #include <AdePT/kernels/electrons_async.cuh>
 #include <AdePT/kernels/gammas_async.cuh>
+
 #include <AdePT/navigation/BVHNavigator.h>
 #include <AdePT/integration/AdePTGeant4Integration.hh>
+
 // #include <AdePT/benchmarking/NVTX.h>
 
 #include <VecGeom/base/Config.h>

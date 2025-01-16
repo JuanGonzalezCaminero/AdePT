@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2022 CERN
-// SPDX-License-Identifier: Apache-2.0
+// // SPDX-FileCopyrightText: 2022 CERN
+// // SPDX-License-Identifier: Apache-2.0
 
 #include <AdePT/core/AsyncAdePTTransportStruct.cuh>
 

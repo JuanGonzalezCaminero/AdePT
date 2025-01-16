@@ -34,11 +34,6 @@ struct GPUHit {
   char fParticleType{0}; // Particle type ID
 };
 
-// Comparison for sorting tracks into events on device:
-struct CompareGPUHits {
-  __device__ bool operator()(const GPUHit &lhs, const GPUHit &rhs) const { return lhs.fEventId < rhs.fEventId; }
-};
-
 /// @brief Stores information used for comparison with Geant4 (Number of steps, Number of produced particles, etc)
 struct GlobalCounters {
   double energyDeposit;

@@ -12,9 +12,6 @@
 
 #include <VecGeom/navigation/NavigationState.h>
 
-
-
-
 #include <atomic>
 #include <deque>
 #include <mutex>
@@ -23,16 +20,19 @@
 #include <chrono>
 #include <thread>
 
-// namespace global_std = ::std;
-
 // #ifdef __CUDA_ARCH__
-// #include <cub/device/device_merge_sort.cuh>
+#include <cub/device/device_merge_sort.cuh>
 // #endif
 
 // #include <thrust/sort.h>
 
 // Forward declarations of CUDA functions
-#include <AdePT/core/CublasWrappers.cuh>
+// #include <AdePT/core/CublasWrappers.cuh>
+
+// Comparison for sorting tracks into events on device:
+struct CompareGPUHits {
+  __device__ bool operator()(const GPUHit &lhs, const GPUHit &rhs) const { return lhs.fEventId < rhs.fEventId; }
+};
 
 namespace AsyncAdePT {
 
@@ -108,10 +108,13 @@ public:
     // Init buffers for on-device sorting of hits:
     // Determine device storage requirements for on-device sorting.
     // TODO: Enable sorting
-    // result = cub::DeviceMergeSort::SortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
+    result = cub::DeviceMergeSort::SortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
+                                            CompareGPUHits{});
+    // result = cublas_wrappers::CublasSortKeys(nullptr, 
+    //                                         fGPUSortAuxMemorySize, 
+    //                                         fGPUHitBuffer_dev.get(), 
+    //                                         fHitCapacity,
     //                                         CompareGPUHits{});
-    result = cublas_wrappers::CublasSortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
-                                             CompareGPUHits{});
     // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space for hit sorting on device."};
 
@@ -204,10 +207,14 @@ public:
       auto bufferBegin = buffer.hitScoringInfo.hitBuffer_dev;
 
       // TODO: Enable sorting
-      // cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
-      //                               buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
-      cublas_wrappers::CublasSortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
+      cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
                                     buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
+      // cublas_wrappers::CublasSortKeys(fGPUSortAuxMemory.get(), 
+      //                                 fGPUSortAuxMemorySize, 
+      //                                 bufferBegin,
+      //                                 buffer.hitScoringInfo.fSlotCounter, 
+      //                                 CompareGPUHits{}, 
+      //                                 cudaStreamForHitCopy);
 
       COPCORE_CUDA_CHECK(cudaMemcpyAsync(buffer.hostBuffer, bufferBegin,
                                         sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDefault,

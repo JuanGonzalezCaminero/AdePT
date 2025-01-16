@@ -169,7 +169,7 @@ set(ADEPT_G4_INTEGRATION_SRCS
   src/AdePTGeant4Integration.cpp
   src/AdePTConfigurationMessenger.cc
   src/AdePTTrackingManager.cu
-  src/CublasWrappers.cu
+  # src/CublasWrappers.cu
 )
 
 add_library(CopCore INTERFACE)

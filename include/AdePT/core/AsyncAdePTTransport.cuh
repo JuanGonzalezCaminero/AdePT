@@ -545,7 +545,7 @@ void AdvanceEventStates(EventState oldState, EventState newState, std::vector<st
 void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates)
 {
   std::scoped_lock lock{trackBuffer.fromDeviceMutex};
-  const auto &fromDevice                      = trackBuffer.fromDevice_host;
+  const auto &fromDevice                      = trackBuffer.fromDevice_host.get();
   TrackDataWithIDs const *const fromDeviceEnd = fromDevice + *trackBuffer.nFromDevice_host;
 
   for (TrackDataWithIDs *trackIt = fromDevice; trackIt < fromDeviceEnd; ++trackIt) {
@@ -741,11 +741,8 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
           // if (fDebugLevel > 3) std::cout << "Injecting " << nInject << " to GPU\n";
 
           // copy buffer of tracks to device
-          // TODO: ResourceManager
           COPCORE_CUDA_CHECK(
-              cudaMemcpyAsync(trackBuffer.toDevice_dev, toDevice.tracks,
-          // COPCORE_CUDA_CHECK(
-          //  cudaMemcpyAsync(trackBuffer.toDevice_dev.get(), toDevice.tracks,
+              cudaMemcpyAsync(trackBuffer.toDevice_dev.get(), toDevice.tracks,
                               nInject * sizeof(TrackDataWithIDs), cudaMemcpyHostToDevice, transferStream));
           // Mark end of copy operation:
           COPCORE_CUDA_CHECK(cudaEventRecord(cudaEvent, transferStream));
@@ -754,9 +751,7 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
           constexpr auto injectThreads = 128u;
           const auto injectBlocks      = (nInject + injectThreads - 1) / injectThreads;
           InjectTracks<<<injectBlocks, injectThreads, 0, transferStream>>>(
-              // TODO: ResourceManager
-              // trackBuffer.toDevice_dev.get(), nInject, secondaries, world_dev, gpuState.injectionQueue, adeptSeed);
-              trackBuffer.toDevice_dev, nInject, secondaries, world_dev, gpuState.injectionQueue, adeptSeed);
+              trackBuffer.toDevice_dev.get(), nInject, secondaries, world_dev, gpuState.injectionQueue, adeptSeed);
           COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
               transferStream,
               [](void *arg) { (*static_cast<decltype(GPUstate::injectState) *>(arg)) = InjectState::ReadyToEnqueue; },
@@ -869,16 +864,11 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
         // Populate the staging buffer and copy to host
         constexpr unsigned int block_size = 128;
         const unsigned int grid_size      = (trackBuffer.fNumFromDevice + block_size - 1) / block_size;
-        // TODO: ResourceManager
         FillFromDeviceBuffer<<<grid_size, block_size, 0, transferStream>>>(
-            allLeaked, trackBuffer.fromDevice_dev,
-            // FillFromDeviceBuffer<<<grid_size, block_size, 0, transferStream>>>(allLeaked,
-            // trackBuffer.fromDevice_dev.get(),
+            allLeaked, trackBuffer.fromDevice_dev.get(),
             trackBuffer.fNumFromDevice);
-        // TODO: ResourceManager
         COPCORE_CUDA_CHECK(cudaMemcpyFromSymbolAsync(
-            trackBuffer.nFromDevice_host, nFromDevice_dev,
-            // COPCORE_CUDA_CHECK(cudaMemcpyFromSymbolAsync(trackBuffer.nFromDevice_host.get(), nFromDevice_dev,
+            trackBuffer.nFromDevice_host.get(), nFromDevice_dev,
             sizeof(unsigned int), 0, cudaMemcpyDeviceToHost, transferStream));
         COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
             transferStream,
@@ -895,10 +885,8 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
 
       if (gpuState.extractState == ExtractState::ReadyToCopy) {
         gpuState.extractState = ExtractState::CopyToHost;
-        // TODO: ResourceManager
         COPCORE_CUDA_CHECK(cudaMemcpyAsync(
-            trackBuffer.fromDevice_host, trackBuffer.fromDevice_dev,
-            // COPCORE_CUDA_CHECK(cudaMemcpyAsync(trackBuffer.fromDevice_host.get(), trackBuffer.fromDevice_dev.get(),
+            trackBuffer.fromDevice_host.get(), trackBuffer.fromDevice_dev.get(),
             (*trackBuffer.nFromDevice_host) * sizeof(TrackDataWithIDs), cudaMemcpyDeviceToHost, transferStream));
         
 
@@ -1099,6 +1087,7 @@ void FreeGPU(GPUstate &gpuState, G4HepEmState &g4hepem_state, std::thread &gpuWo
   // gpuState.reset();
   cudaFree(&gpuState);
 
+
   // TODO: GPUstate is no longer a unique_ptr inside AsyncAdePTTransport,
   // check if there's any further cleanup required
 
@@ -1134,42 +1123,38 @@ TrackBuffer::TrackBuffer(unsigned int numToDevice, unsigned int numFromDevice, u
 {
   TrackDataWithIDs *devPtr, *hostPtr;
   // Double buffer for lock-free host runs:
+  // toDevice_host = std::make_unique<TrackDataWithIDs[]>(2 * numToDevice);
   COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, 2 * numToDevice * sizeof(TrackDataWithIDs)));
   COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numToDevice * sizeof(TrackDataWithIDs)));
 
-  // TODO: Check whether we can use ResourceManager
-  toDevice_host = hostPtr;
-  toDevice_dev  = devPtr;
-  // toDevice_host.reset(hostPtr);
-  // toDevice_dev.reset(devPtr);
+  toDevice_host.reset(hostPtr);
+  toDevice_dev.reset(devPtr);
 
+  // fromDevice_host = std::make_unique<TrackDataWithIDs[]>(numFromDevice);
   COPCORE_CUDA_CHECK(cudaMallocHost(&hostPtr, numFromDevice * sizeof(TrackDataWithIDs)));
   COPCORE_CUDA_CHECK(cudaMalloc(&devPtr, numFromDevice * sizeof(TrackDataWithIDs)));
-  fromDevice_host = hostPtr;
-  fromDevice_dev  = devPtr;
-  // fromDevice_host.reset(hostPtr);
-  // fromDevice_dev.reset(devPtr);
+
+  // TODO: Check whether we can use ResourceManager
+  fromDevice_host.reset(hostPtr);
+  fromDevice_dev.reset(devPtr);
 
   unsigned int *nFromDevice = nullptr;
   COPCORE_CUDA_CHECK(cudaMallocHost(&nFromDevice, sizeof(unsigned int)));
-  nFromDevice_host = nFromDevice;
-  // nFromDevice_host.reset(nFromDevice);
+  // nFromDevice_host = std::make_unique<unsigned int[]>(nFromDevice);
+  // nFromDevice_host = nFromDevice;
+  nFromDevice_host.reset(nFromDevice);
 
-  toDeviceBuffer[0].tracks = toDevice_host;
-  // toDeviceBuffer[0].tracks    = toDevice_host.get();
+  // toDeviceBuffer[0].tracks = toDevice_host;
+  toDeviceBuffer[0].tracks    = toDevice_host.get();
   toDeviceBuffer[0].maxTracks = numToDevice;
   toDeviceBuffer[0].nTrack    = 0;
-  toDeviceBuffer[1].tracks    = toDevice_host + numToDevice;
-  // toDeviceBuffer[1].tracks    = toDevice_host.get() + numToDevice;
+  // toDeviceBuffer[1].tracks    = toDevice_host + numToDevice;
+  toDeviceBuffer[1].tracks    = toDevice_host.get() + numToDevice;
   toDeviceBuffer[1].maxTracks = numToDevice;
   toDeviceBuffer[1].nTrack    = 0;
 }
 
-} // namespace AsyncAdePT
 
-// AsyncAdePTTransport::~AsyncAdePTTransport()
-// {
-//   FreeGPU();
-// }
+} // namespace AsyncAdePT
 
 #endif // ASYNC_ADEPT_TRANSPORT_CUH

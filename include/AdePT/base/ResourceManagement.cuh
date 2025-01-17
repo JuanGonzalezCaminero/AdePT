@@ -4,6 +4,7 @@
 #define RESOURCE_MANAGEMENT_CUH
 
 #include <memory>
+#include <AdePT/base/ResourceManagement.hh>
 #include "AdePT/copcore/Global.h"
 
 namespace AsyncAdePT {
@@ -28,15 +29,22 @@ void freeCudaEvent(void *event)
   if (event) COPCORE_CUDA_CHECK(cudaEventDestroy(*static_cast<cudaEvent_t *>(event)));
 }
 
-template <class T>
-struct CudaDeleter {
-  void operator()(T *ptr) const { freeCuda(ptr); }
-};
-template <class T>
-struct CudaHostDeleter {
-  void operator()(T *ptr) const { freeCudaHost(ptr); }
-};
+// template <class T>
+// void CudaDeleter<T>::operator()(T *ptr) const { freeCuda(ptr); }
 
+// template <class T>
+// void CudaHostDeleter<T>::operator()(T *ptr) const { freeCudaHost(ptr); }
+
+// template <class T>
+// struct CudaDeleter {
+//   void operator()(T *ptr) const { freeCuda(ptr); }
+// };
+// template <class T>
+// struct CudaHostDeleter {
+//   void operator()(T *ptr) const { freeCudaHost(ptr); }
+// };
+
+// Instantiate the deleters for specific types.
 #ifdef __CUDACC__
 template <>
 struct CudaDeleter<cudaStream_t> {
@@ -47,8 +55,6 @@ struct CudaDeleter<cudaEvent_t> {
   void operator()(cudaEvent_t *event) const { freeCudaEvent(event); }
 };
 #endif
-template <typename T = void, typename Deleter = CudaDeleter<T>>
-using unique_ptr_cuda = std::unique_ptr<T, Deleter>;
 
 } // namespace AsyncAdePT
 

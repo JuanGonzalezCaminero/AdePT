@@ -8,7 +8,7 @@
 #include <AdePT/base/MParray.h>
 #include <AdePT/core/TrackData.h>
 
-// #include <AdePT/base/ResourceManagement.cuh>
+#include <AdePT/base/ResourceManagement.hh>
 
 #include <atomic>
 #include <array>
@@ -119,13 +119,12 @@ struct TrackBuffer {
 
   unsigned int fNumToDevice{0};   ///< number of slots in the toDevice buffer
   unsigned int fNumFromDevice{0}; ///< number of slots in the fromDevice buffer
-  TrackDataWithIDs *toDevice_host;                              ///< Tracks to be transported to the device
-  // TODO: Use ResourceManager for CUDA pointers if possible
-  TrackDataWithIDs *toDevice_dev; ///< toDevice buffer of tracks
-  TrackDataWithIDs *fromDevice_host; ///< Tracks from device
-  // TODO: Use ResourceManager for CUDA pointers if possible
-  TrackDataWithIDs *fromDevice_dev;                                     ///< fromDevice buffer of tracks
-  unsigned int *nFromDevice_host; ///< Number of tracks collected on device
+  unique_ptr_cuda<TrackDataWithIDs, CudaHostDeleter<TrackDataWithIDs>> toDevice_host;                              ///< Tracks to be transported to the device
+  unique_ptr_cuda<TrackDataWithIDs> toDevice_dev; ///< toDevice buffer of tracks
+  unique_ptr_cuda<TrackDataWithIDs, CudaHostDeleter<TrackDataWithIDs>> fromDevice_host; ///< Tracks from device
+  unique_ptr_cuda<TrackDataWithIDs> fromDevice_dev;                                     ///< fromDevice buffer of tracks
+  unique_ptr_cuda<unsigned int, CudaHostDeleter<unsigned int>>
+      nFromDevice_host; ///< Number of tracks collected on device
 
   std::vector<std::vector<TrackDataWithIDs>> fromDeviceBuffers;
   std::mutex fromDeviceMutex;

@@ -76,7 +76,7 @@ private:
   bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
   bool InitializePhysics();
   // void InitializeGPU();
-  // void FreeGPU();
+  void FreeGPU();
   // /// @brief Asynchronous loop for transporting particles on GPU.
   // void TransportLoop();
   // void HitProcessingLoop(HitProcessingContext *const);

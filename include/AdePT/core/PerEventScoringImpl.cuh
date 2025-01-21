@@ -31,7 +31,9 @@
 
 // Comparison for sorting tracks into events on device:
 struct CompareGPUHits {
-  __device__ bool operator()(const GPUHit &lhs, const GPUHit &rhs) const { return lhs.fEventId < rhs.fEventId; }
+ __device__ bool operator()(const GPUHit &lhs, const GPUHit &rhs) const {
+    return lhs.fEventId < rhs.fEventId; 
+  }
 };
 
 namespace AsyncAdePT {
@@ -93,7 +95,6 @@ class HitScoring {
   }
 
 public:
-  // HitScoring(unsigned int hitCapacity, unsigned int nThread);
   HitScoring(unsigned int hitCapacity, unsigned int nThread) : fHitCapacity{hitCapacity}, fHitQueues(nThread)
   {
     // We use a single allocation for both buffers:
@@ -107,23 +108,12 @@ public:
 
     // Init buffers for on-device sorting of hits:
     // Determine device storage requirements for on-device sorting.
-    // TODO: Enable sorting
     result = cub::DeviceMergeSort::SortKeys(nullptr, fGPUSortAuxMemorySize, fGPUHitBuffer_dev.get(), fHitCapacity,
                                             CompareGPUHits{});
-    // result = cublas_wrappers::CublasSortKeys(nullptr, 
-    //                                         fGPUSortAuxMemorySize, 
-    //                                         fGPUHitBuffer_dev.get(), 
-    //                                         fHitCapacity,
-    //                                         CompareGPUHits{});
-    // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space for hit sorting on device."};
-
-    // DEBUG
-    printf("%u Bytes allocated for sorting hits\n", fGPUSortAuxMemorySize);
 
     std::byte *gpuSortingMem;
     result = cudaMalloc(&gpuSortingMem, fGPUSortAuxMemorySize);
-    // result = cudaSuccess;
     if (result != cudaSuccess) throw std::invalid_argument{"No space to allocate hit sorting buffer."};
     fGPUSortAuxMemory.reset(gpuSortingMem);
 
@@ -145,7 +135,7 @@ public:
   
   void SwapDeviceBuffers(cudaStream_t cudaStream)
   {
-     // Ensure that host side has been processed:
+    // Ensure that host side has been processed:
     auto &currentBuffer = fBuffers[fActiveBuffer];
     if (currentBuffer.state != BufferHandle::State::OnDevice)
         throw std::logic_error(__FILE__ + std::to_string(__LINE__) + ": On-device buffer in wrong state");
@@ -195,7 +185,7 @@ public:
                        [](const auto &handle) { return handle.state == BufferHandle::State::Free; });
   }
 
-  // void TransferHitsToHost(cudaStream_t cudaStreamForHitCopy);
+  /// Copy the current contents of the GPU hit buffer to host.
   void TransferHitsToHost(cudaStream_t cudaStreamForHitCopy)
   {
     for (auto &buffer : fBuffers) {
@@ -206,22 +196,26 @@ public:
 
       auto bufferBegin = buffer.hitScoringInfo.hitBuffer_dev;
 
-      // TODO: Enable sorting
-      cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
-                                    buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
-      // cublas_wrappers::CublasSortKeys(fGPUSortAuxMemory.get(), 
-      //                                 fGPUSortAuxMemorySize, 
-      //                                 bufferBegin,
-      //                                 buffer.hitScoringInfo.fSlotCounter, 
-      //                                 CompareGPUHits{}, 
-      //                                 cudaStreamForHitCopy);
+      // cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
+      //                               buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
 
-      COPCORE_CUDA_CHECK(cudaMemcpyAsync(buffer.hostBuffer, bufferBegin,
-                                        sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDefault,
-                                        cudaStreamForHitCopy));
-      COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
-          cudaStreamForHitCopy,
-          [](void *arg) { static_cast<BufferHandle *>(arg)->state = BufferHandle::State::NeedHostProcessing; }, &buffer));
+      // COPCORE_CUDA_CHECK(cudaMemcpyAsync(buffer.hostBuffer, bufferBegin,
+      //                                   sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDefault,
+      //                                   cudaStreamForHitCopy));
+      // COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
+      //     cudaStreamForHitCopy,
+      //     [](void *arg) { static_cast<BufferHandle *>(arg)->state = BufferHandle::State::NeedHostProcessing; }, &buffer));
+
+      // DEBUG:
+      COPCORE_CUDA_CHECK(cudaMemcpy(buffer.hostBuffer, bufferBegin,
+                                        sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDeviceToHost));
+
+      for(auto i=0; i<buffer.hitScoringInfo.fSlotCounter; ++i) {
+        assert(buffer.hostBuffer[i].fPreStepPoint.fNavigationState.GetState().fLevel <= 3);
+        assert(buffer.hostBuffer[i].fPostStepPoint.fNavigationState.GetState().fLevel <= 3);
+      }
+      
+      buffer.state = BufferHandle::State::NeedHostProcessing;
     }
   }
   

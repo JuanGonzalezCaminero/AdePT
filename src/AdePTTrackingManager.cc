@@ -15,6 +15,14 @@
 
 #include <algorithm>
 
+#ifdef ASYNC_MODE
+std::shared_ptr<AdePTTransportInterface> InstantiateAdePT(AdePTConfiguration &conf)
+{
+  static std::shared_ptr<AsyncAdePT::AsyncAdePTTransport<AdePTGeant4Integration>> adePT{new AsyncAdePT::AsyncAdePTTransport<AdePTGeant4Integration>(conf)};
+  return adePT;
+}
+#endif
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 AdePTTrackingManager::AdePTTrackingManager() {}
@@ -47,9 +55,10 @@ void AdePTTrackingManager::InitializeAdePT()
     // Create an instance of an AdePT transport engine. This can either be one engine per thread or a shared engine for
     // all threads.
     #ifndef ASYNC_MODE
-    fAdeptTransport = std::make_shared<AdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
+    fAdeptTransport = std::make_unique<AdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
     #else
-    fAdeptTransport = std::make_shared<AsyncAdePT::AsyncAdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
+    // fAdeptTransport = std::make_shared<AsyncAdePT::AsyncAdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
+    fAdeptTransport = InstantiateAdePT(*fAdePTConfiguration);
     #endif
 
     // Initialize common data:
@@ -64,9 +73,10 @@ void AdePTTrackingManager::InitializeAdePT()
     // all threads.
     fAdePTConfiguration->SetNumThreads(fNumThreads);
     #ifndef ASYNC_MODE
-    fAdeptTransport = std::make_shared<AdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
+    fAdeptTransport = std::make_unique<AdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
     #else
-    fAdeptTransport = std::make_shared<AsyncAdePT::AsyncAdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
+    // fAdeptTransport = std::make_shared<AsyncAdePT::AsyncAdePTTransport<AdePTGeant4Integration>>(*fAdePTConfiguration);
+    fAdeptTransport = InstantiateAdePT(*fAdePTConfiguration);
     #endif
     // Initialize per-thread data
     fAdeptTransport->Initialize();

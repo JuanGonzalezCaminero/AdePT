@@ -196,26 +196,26 @@ public:
 
       auto bufferBegin = buffer.hitScoringInfo.hitBuffer_dev;
 
-      // cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
-      //                               buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
+      cub::DeviceMergeSort::SortKeys(fGPUSortAuxMemory.get(), fGPUSortAuxMemorySize, bufferBegin,
+                                    buffer.hitScoringInfo.fSlotCounter, CompareGPUHits{}, cudaStreamForHitCopy);
 
-      // COPCORE_CUDA_CHECK(cudaMemcpyAsync(buffer.hostBuffer, bufferBegin,
-      //                                   sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDefault,
-      //                                   cudaStreamForHitCopy));
-      // COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
-      //     cudaStreamForHitCopy,
-      //     [](void *arg) { static_cast<BufferHandle *>(arg)->state = BufferHandle::State::NeedHostProcessing; }, &buffer));
+      COPCORE_CUDA_CHECK(cudaMemcpyAsync(buffer.hostBuffer, bufferBegin,
+                                        sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDefault,
+                                        cudaStreamForHitCopy));
+      COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
+          cudaStreamForHitCopy,
+          [](void *arg) { static_cast<BufferHandle *>(arg)->state = BufferHandle::State::NeedHostProcessing; }, &buffer));
 
       // DEBUG:
-      COPCORE_CUDA_CHECK(cudaMemcpy(buffer.hostBuffer, bufferBegin,
-                                        sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDeviceToHost));
+      // COPCORE_CUDA_CHECK(cudaMemcpy(buffer.hostBuffer, bufferBegin,
+      //                                   sizeof(GPUHit) * buffer.hitScoringInfo.fSlotCounter, cudaMemcpyDeviceToHost));
 
-      for(auto i=0; i<buffer.hitScoringInfo.fSlotCounter; ++i) {
-        assert(buffer.hostBuffer[i].fPreStepPoint.fNavigationState.GetState().fLevel <= 3);
-        assert(buffer.hostBuffer[i].fPostStepPoint.fNavigationState.GetState().fLevel <= 3);
-      }
+      // for(auto i=0; i<buffer.hitScoringInfo.fSlotCounter; ++i) {
+      //   assert(buffer.hostBuffer[i].fPreStepPoint.fNavigationState.GetState().fLevel <= 3);
+      //   assert(buffer.hostBuffer[i].fPostStepPoint.fNavigationState.GetState().fLevel <= 3);
+      // }
       
-      buffer.state = BufferHandle::State::NeedHostProcessing;
+      // buffer.state = BufferHandle::State::NeedHostProcessing;
     }
   }
   

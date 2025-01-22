@@ -423,7 +423,7 @@ void FlushScoring(AdePTScoring &scoring)
 /// If successful, this will initialise the member fGPUState.
 /// If memory allocation fails, an exception is thrown. In this case, the caller has to
 /// try again after some wait time or with less transport slots.
-__host__ GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
+GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
                         std::vector<AdePTScoring *> &scoring)
 {
   // auto gpuState_ptr   = std::make_unique<GPUstate>();
@@ -593,20 +593,20 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
   // NVTXTracer tracer{"TransportLoop"};
 
   // Initialise the transport engine:
-  do {
-    try {
-      gpuStatePtr = InitializeGPU(trackCapacity, scoringCapacity, numThreads, trackBuffer, scoring);
-    } catch (std::invalid_argument &exc) {
-      // Clear error state:
-      auto result = cudaGetLastError();
-      std::cerr << "\nError: AdePT failed to initialise the device (" << cudaGetErrorName(result) << "):\n"
-                << exc.what() << "\nReducing track capacity: " << trackCapacity << " --> " << trackCapacity * 0.9
-                << '\n';
-      trackCapacity *= 0.9;
+  // do {
+  //   try {
+  //     gpuStatePtr = InitializeGPU(trackCapacity, scoringCapacity, numThreads, trackBuffer, scoring);
+  //   } catch (std::invalid_argument &exc) {
+  //     // Clear error state:
+  //     auto result = cudaGetLastError();
+  //     std::cerr << "\nError: AdePT failed to initialise the device (" << cudaGetErrorName(result) << "):\n"
+  //               << exc.what() << "\nReducing track capacity: " << trackCapacity << " --> " << trackCapacity * 0.9
+  //               << '\n';
+  //     trackCapacity *= 0.9;
 
-      if (trackCapacity < 10000) throw std::runtime_error{"AdePT is unable to allocate GPU memory."};
-    }
-  } while (!gpuStatePtr);
+  //     if (trackCapacity < 10000) throw std::runtime_error{"AdePT is unable to allocate GPU memory."};
+  //   }
+  // } while (!gpuStatePtr);
 
   using InjectState                             = GPUstate::InjectState;
   using ExtractState                            = GPUstate::ExtractState;
@@ -1065,10 +1065,28 @@ std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int threadId, GPU
   return gpuState->fHitScoring->GetNextHitsVector(threadId);
 }
 
+// TODO: Make it clear that this will initialize and return the GPUState or make a 
+// separate init function that will compile here and be called from the .icc
 std::thread LaunchGPUWorker(int trackCapacity, int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
                             GPUstate *gpuStatePtr, std::vector<std::atomic<EventState>> &eventStates,
                             std::condition_variable &cvG4Workers, std::vector<AdePTScoring *> &scoring, int adeptSeed)
 {
+  // Initialize the GPUState
+  // do {
+  //   try {
+  //     gpuStatePtr = InitializeGPU(trackCapacity, scoringCapacity, numThreads, trackBuffer, scoring);
+  //   } catch (std::invalid_argument &exc) {
+  //     // Clear error state:
+  //     auto result = cudaGetLastError();
+  //     std::cerr << "\nError: AdePT failed to initialise the device (" << cudaGetErrorName(result) << "):\n"
+  //               << exc.what() << "\nReducing track capacity: " << trackCapacity << " --> " << trackCapacity * 0.9
+  //               << '\n';
+  //     trackCapacity *= 0.9;
+
+  //     if (trackCapacity < 10000) throw std::runtime_error{"AdePT is unable to allocate GPU memory."};
+  //   }
+  // } while (!gpuStatePtr);
+
   return std::thread{&TransportLoop, trackCapacity, scoringCapacity, numThreads, std::ref(trackBuffer),
                      gpuStatePtr, std::ref(eventStates), std::ref(cvG4Workers), std::ref(scoring), adeptSeed};
 }

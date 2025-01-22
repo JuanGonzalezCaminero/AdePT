@@ -49,6 +49,8 @@ std::shared_ptr<const std::vector<GPUHit>> GetGPUHits(unsigned int, AsyncAdePT::
 std::thread LaunchGPUWorker(int, int, int, AsyncAdePT::TrackBuffer &, AsyncAdePT::GPUstate *,
                             std::vector<std::atomic<AsyncAdePT::EventState>> &, std::condition_variable &, 
                             std::vector<AdePTScoring *>&, int);
+AsyncAdePT::GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, AsyncAdePT::TrackBuffer &trackBuffer,
+                        std::vector<AdePTScoring *> &scoring);
 void FreeGPU(AsyncAdePT::GPUstate &, G4HepEmState &, std::thread &);
 } // namespace async_adept_impl
 
@@ -242,6 +244,7 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
   // with the number of threads.
   fBuffer = std::make_unique<TrackBuffer>(8192 * fNThread, 1024 * fNThread, fNThread);
 
+  fGPUstate = async_adept_impl::InitializeGPU(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fScoring);
   fGPUWorker = async_adept_impl::LaunchGPUWorker(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fGPUstate,
                                                  fEventStates, fCV_G4Workers, fScoring, fAdePTSeed);
 

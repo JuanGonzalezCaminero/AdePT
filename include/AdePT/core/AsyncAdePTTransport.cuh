@@ -202,7 +202,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[i].direction[0] = track->dir[0];
       fromDevice[i].direction[1] = track->dir[1];
       fromDevice[i].direction[2] = track->dir[2];
-      fromDevice[i].eKin         = track->energy;
+      fromDevice[i].eKin         = track->eKin;
       fromDevice[i].globalTime   = track->globalTime;
       fromDevice[i].localTime    = track->localTime;
       fromDevice[i].properTime   = track->properTime;

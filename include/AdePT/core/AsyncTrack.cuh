@@ -21,7 +21,7 @@
 struct Track {
   using Precision = vecgeom::Precision;
   RanluxppDouble rngState;
-  double energy            = 0;
+  double eKin            = 0;
   float numIALeft[3]       = {-1., -1., -1.};
   float initialRange       = -1.f; // Only for e-?
   float dynamicRangeFactor = -1.f; // Only for e-?
@@ -47,7 +47,7 @@ struct Track {
   __device__ Track(uint64_t rngSeed, double eKin, double globalTime, float localTime, float properTime,
                    double const position[3], double const direction[3], unsigned int eventId, int parentId,
                    short threadId)
-      : energy{eKin}, globalTime{globalTime}, localTime{localTime}, properTime{properTime}, eventId{eventId},
+      : eKin{eKin}, globalTime{globalTime}, localTime{localTime}, properTime{properTime}, eventId{eventId},
         parentId{parentId}, threadId{threadId}
   {
     rngState.SetSeed(rngSeed);
@@ -58,10 +58,10 @@ struct Track {
 
   /// Construct a secondary from a parent track.
   /// NB: The caller is responsible to branch a new RNG state.
-  __device__ Track(RanluxppDouble const &rngState, double energy, const vecgeom::Vector3D<Precision> &parentPos,
+  __device__ Track(RanluxppDouble const &rngState, double eKin, const vecgeom::Vector3D<Precision> &parentPos,
                    const vecgeom::Vector3D<Precision> &newDirection, const vecgeom::NavigationState &newNavState,
                    const Track &parentTrack)
-      : rngState{rngState}, energy{energy}, globalTime{parentTrack.globalTime}, pos{parentPos}, dir{newDirection},
+      : rngState{rngState}, eKin{eKin}, globalTime{parentTrack.globalTime}, pos{parentPos}, dir{newDirection},
         navState{newNavState}, eventId{parentTrack.eventId}, parentId{parentTrack.parentId},
         threadId{parentTrack.threadId}
   {

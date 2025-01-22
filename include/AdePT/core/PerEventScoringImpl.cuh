@@ -64,6 +64,7 @@ struct BufferHandle {
   std::atomic<State> state;
 };
 
+// TODO: Rename this. Maybe ScoringState? Check usage in GPUstate
 class HitScoring {
   unique_ptr_cuda<GPUHit> fGPUHitBuffer_dev;
   unique_ptr_cuda<GPUHit, CudaHostDeleter<GPUHit>> fGPUHitBuffer_host;

@@ -510,7 +510,11 @@ GPUstate *InitializeGPU(int trackCapacity, int scoringCapacity, int numThreads, 
   scoring.clear();
   scoring.reserve(numThreads);
   for (unsigned int i = 0; i < numThreads; ++i) {
-    scoring.emplace_back(gpuState.fScoring_dev + i);
+    // TODO: This seems to build the object in gpuState.fScoring_dev + i,
+    // rather than passing the address as an argument to the constructor,
+    // investigate why
+    // scoring.emplace_back(gpuState.fScoring_dev + i);
+    scoring.push_back(new PerEventScoring(gpuState.fScoring_dev + i));
   }
   gpuState.fHitScoring.reset(new HitScoring(scoringCapacity, numThreads));
 

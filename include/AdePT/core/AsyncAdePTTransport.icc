@@ -240,6 +240,8 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
     g4int.InitScoringData(volAuxArray.fAuxData);
   }
 
+  // TODO: Make this configurable or figure out a reasonable value (Currently, it seems that the 
+  // to device buffer is often full)
   // Allocate buffers to transport particles to/from device. Scale the size of the staging area
   // with the number of threads.
   fBuffer = std::make_unique<TrackBuffer>(8192 * fNThread, 1024 * fNThread, fNThread);

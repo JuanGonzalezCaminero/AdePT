@@ -203,15 +203,6 @@ struct GPUstate {
   }
 };
 
-
-/// @brief  This is meant as a TEMPORARY workaround to the fact that we can't capture context in a 
-/// lambda called from cudaLaunchHostFunc. we store the parameters here temporarily
-struct ReturnAux {
-  TrackBuffer *trackBuffer;
-  GPUstate *gpuState;
-  std::vector<std::atomic<EventState>> *eventStates;
-};
-
 // Constant data structures from G4HepEm accessed by the kernels.
 // (defined in TestEm3.cu)
 extern __constant__ __device__ struct G4HepEmParameters g4HepEmPars;

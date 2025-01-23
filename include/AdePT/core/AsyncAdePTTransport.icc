@@ -246,6 +246,8 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
   // with the number of threads.
   fBuffer = std::make_unique<TrackBuffer>(8192 * fNThread, 1024 * fNThread, fNThread);
 
+  assert(fBuffer != nullptr);
+
   fGPUstate = async_adept_impl::InitializeGPU(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fScoring);
   fGPUWorker = async_adept_impl::LaunchGPUWorker(fTrackCapacity, fScoringCapacity, fNThread, *fBuffer, fGPUstate,
                                                  fEventStates, fCV_G4Workers, fScoring, fAdePTSeed);

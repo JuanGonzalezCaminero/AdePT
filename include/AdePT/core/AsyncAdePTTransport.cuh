@@ -546,7 +546,7 @@ void AdvanceEventStates(EventState oldState, EventState newState, std::vector<st
   }
 }
 
-void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates)
+__host__ void ReturnTracksToG4(TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates)
 {
   std::scoped_lock lock{trackBuffer.fromDeviceMutex};
   const auto &fromDevice                      = trackBuffer.fromDevice_host.get();
@@ -893,19 +893,26 @@ void TransportLoop(int trackCapacity, int scoringCapacity, int numThreads, Track
             trackBuffer.fromDevice_host.get(), trackBuffer.fromDevice_dev.get(),
             (*trackBuffer.nFromDevice_host) * sizeof(TrackDataWithIDs), cudaMemcpyDeviceToHost, transferStream));
         
+        struct CallbackData {
+            TrackBuffer* trackBuffer;
+            GPUstate* gpuState; 
+            std::vector<std::atomic<EventState>>* eventStates;
+        };
 
-        ReturnAux temp{&trackBuffer, &gpuState, &eventStates};
-        
-        
+        // Needs to be dynamically allocated, since the callback may execute after 
+        // the current scope has ended.
+        CallbackData* data = new CallbackData{&trackBuffer, &gpuState, &eventStates};
+
         COPCORE_CUDA_CHECK(cudaLaunchHostFunc(
-            transferStream,
-            [](void *temp) {
-              // static_cast<ReturnAux*>(temp);
-              ReturnTracksToG4(*static_cast<ReturnAux*>(temp)->trackBuffer, 
-                               *static_cast<ReturnAux*>(temp)->gpuState, 
-                               *static_cast<ReturnAux*>(temp)->eventStates);
-            },
-            &temp));
+              transferStream,
+              [](void *userData) {
+                  CallbackData* data = static_cast<CallbackData*>(userData);
+                  ReturnTracksToG4(*data->trackBuffer, 
+                                  *data->gpuState,
+                                  *data->eventStates);
+                  delete data;
+              },
+              data));
       }
 
       // -------------------------

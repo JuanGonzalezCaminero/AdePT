@@ -92,7 +92,7 @@ public:
   /// @brief Adds a track to the buffer
   void AddTrack(int pdg, int parentID, double energy, double x, double y, double z, double dirx, double diry,
                 double dirz, double globalTime, double localTime, double properTime, int threadId, unsigned int eventId,
-                unsigned int trackIndex) override;
+                unsigned int trackIndex, vecgeom::NavigationState &&state) override;
   /// @brief Set track capacity on GPU
   void SetTrackCapacity(size_t capacity) override { fTrackCapacity = capacity; }
   /// @brief Set Hit buffer capacity on GPU and Host
@@ -110,6 +110,8 @@ public:
   std::vector<std::string> const *GetGPURegionNames() override { return fGPURegionNames; }
   /// No effect
   void Initialize(bool) override {}
+  /// @brief Initializes the ApplyCut flag. Can only be called after G4 Physics is build
+  bool InitializeApplyCuts(bool applycuts);
   /// @brief Finish GPU transport, bring hits and tracks to host
   /// @details The shower call exists to maintain the same interface as the 
   /// synchronous AdePT mode, since in this case the transport loop is always 

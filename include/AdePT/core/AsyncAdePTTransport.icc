@@ -40,6 +40,7 @@
 /// Forward declarations
 namespace async_adept_impl {
 bool InitializeField(double);
+bool InitializeApplyCuts(bool applycuts);
 G4HepEmState *InitG4HepEm();
 void FlushScoring(AdePTScoring &);
 // void TransportLoop(int, int, int, TrackBuffer&, GPUstate *, int, int);
@@ -141,7 +142,7 @@ template <typename IntegrationLayer>
 void AsyncAdePTTransport<IntegrationLayer>::AddTrack(int pdg, int parentID, double energy, double x, double y, double z,
                                                      double dirx, double diry, double dirz, double globalTime,
                                                      double localTime, double properTime, int threadId,
-                                                     unsigned int eventId, unsigned int trackId)
+                                                     unsigned int eventId, unsigned int trackId, vecgeom::NavigationState &&state)
 {
   if (pdg != 11 && pdg != -11 && pdg != 22) {
     G4cerr << __FILE__ << ":" << __LINE__ << ": Only supporting EM tracks. Got pdgID=" << pdg << "\n";
@@ -150,7 +151,7 @@ void AsyncAdePTTransport<IntegrationLayer>::AddTrack(int pdg, int parentID, doub
 
   TrackDataWithIDs track{pdg,       parentID,   energy,  x,       y,
                          z,         dirx,       diry,    dirz,    globalTime,
-                         localTime, properTime, eventId, trackId, static_cast<short>(threadId)};
+                         localTime, properTime, std::move(state), eventId, trackId, static_cast<short>(threadId)};
   if (fDebugLevel >= 2) {
     fGPUNetEnergy[threadId] += energy;
     if (fDebugLevel >= 6) {
@@ -172,6 +173,12 @@ template <typename IntegrationLayer>
 bool AsyncAdePTTransport<IntegrationLayer>::InitializeField(double bz)
 {
   return async_adept_impl::InitializeField(bz);
+}
+
+template <typename IntegrationLayer>
+bool AsyncAdePTTransport<IntegrationLayer>::InitializeApplyCuts(bool applycuts)
+{
+  return async_adept_impl::InitializeApplyCuts(applycuts);
 }
 
 template <typename IntegrationLayer>
@@ -237,7 +244,7 @@ void AsyncAdePTTransport<IntegrationLayer>::Initialize()
   AsyncAdePT::InitVolAuxArray(volAuxArray);
 
   for (auto &g4int : fIntegrationLayerObjects) {
-    g4int.InitScoringData(volAuxArray.fAuxData);
+    g4int.InitScoringData();
   }
 
   // TODO: Make this configurable or figure out a reasonable value (Currently, it seems that the 

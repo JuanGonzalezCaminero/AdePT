@@ -412,6 +412,13 @@ bool InitializeField(double bz)
   return true;
 }
 
+bool InitializeApplyCuts(bool applycuts)
+{
+  // Initialize ApplyCut
+  COPCORE_CUDA_CHECK(cudaMemcpyToSymbol(ApplyCuts, &applycuts, sizeof(bool)));
+  return true;
+}
+
 void FlushScoring(AdePTScoring &scoring)
 {
   scoring.CopyToHost();
@@ -1135,6 +1142,7 @@ __constant__ __device__ struct G4HepEmData g4HepEmData;
 
 __constant__ __device__ adeptint::VolAuxData *gVolAuxData = nullptr;
 __constant__ __device__ double BzFieldValue               = 0;
+__constant__ __device__ bool ApplyCuts                    = false;
 
 /// Transfer volume auxiliary data to GPU
 void InitVolAuxArray(adeptint::VolAuxArray &array)

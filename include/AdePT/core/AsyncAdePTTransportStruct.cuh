@@ -213,6 +213,7 @@ extern __constant__ __device__ adeptint::VolAuxData *gVolAuxData;
 
 // constexpr float BzFieldValue = 0.1 * copcore::units::tesla;
 extern __constant__ __device__ double BzFieldValue;
+extern __constant__ __device__ bool ApplyCuts;
 constexpr double kPush = 1.e-8 * copcore::units::cm;
 
 } // namespace AsyncAdePT

@@ -168,6 +168,9 @@ struct GPUstate {
   static constexpr unsigned int nSlotManager_dev = 1;
   SlotManager slotManager_host;
   SlotManager *slotManager_dev{nullptr};
+#ifdef USE_SPLIT_KERNELS
+  HepEmBuffers hepEMBuffers_d;
+#endif
   Stats *stats_dev{nullptr}; ///< statistics object pointer on device
   Stats *stats{nullptr};     ///< statistics object pointer on host
 

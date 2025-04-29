@@ -645,6 +645,16 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
   Track *trackStorage_dev = nullptr;
   gpuMalloc(trackStorage_dev, trackCapacity);
 
+// SPLIT: Allocate the hepem track buffers
+#ifdef USE_SPLIT_KERNELS
+  // Init HepEM tracks
+  // e+ / e-
+  COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.hepEMBuffers_d.electronsHepEm, trackCapacity * sizeof(G4HepEmElectronTrack)));
+  COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.hepEMBuffers_d.positronsHepEm, trackCapacity * sizeof(G4HepEmElectronTrack)));
+  // Gammas
+  COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.hepEMBuffers_d.gammasHepEm, trackCapacity * sizeof(G4HepEmGammaTrack)));
+#endif
+
   for (auto &partType : gpuState.particles) {
     // NOTE: ALL PARTICLES ARE STORED IN THE SAME BUFFER
     // FIXME: SAME AS FOR THE SLOTMANAGER
@@ -928,6 +938,10 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
       // *** ELECTRONS ***
       {
         const auto [threads, blocks] = computeThreadsAndBlocks(particlesInFlight[ParticleType::Electron]);
+        ElectronHowFar<true, PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
+            electrons.tracks, electrons.queues.currentlyActive, secondaries, electrons.queues.nextActive,
+            electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent,
+            returnAllSteps, returnLastStep);
         TransportElectrons<PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
             electrons.tracks, electrons.queues.currentlyActive, secondaries, electrons.queues.nextActive,
             electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent,

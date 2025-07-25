@@ -26,6 +26,8 @@
 #include <G4HepEmPositronInteractionAnnihilation.icc>
 #include <G4HepEmElectronEnergyLossFluctuation.icc>
 
+#include <cuda_pipeline_primitives.h>
+
 using VolAuxData = adeptint::VolAuxData;
 
 // Compute velocity based on the kinetic energy of the particle
@@ -67,15 +69,16 @@ __global__ void ElectronHowFar(Track *electrons, G4HepEmElectronTrack *hepEMTrac
     const int slot      = (*active)[i];
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID    = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
 
+    currentTrack.stepCounter++;
     currentTrack.preStepEKin = currentTrack.eKin;
     currentTrack.preStepPos  = currentTrack.pos;
     currentTrack.preStepDir  = currentTrack.dir;
-    currentTrack.stepCounter++;
-    bool printErrors = true;
+    bool printErrors         = false;
     if (currentTrack.stepCounter >= maxSteps || currentTrack.zeroStepCounter > kStepsStuckKill) {
       if (printErrors)
         printf("Killing e-/+ event %d track %ld E=%f lvol=%d after %d steps with zeroStepCounter %u\n",
@@ -209,6 +212,10 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
   constexpr Precision kPushStuck           = 100 * vecgeom::kTolerance;
   constexpr unsigned short kStepsStuckPush = 5;
 
+  __shared__ double eKinShared[32];        // 32 is the block size
+  __shared__ double pStepLengthShared[32]; // 32 is the block size
+  __shared__ float safetyShared[32];       // 32 is the block size
+
 #ifdef ADEPT_USE_EXT_BFIELD
   using Field_t = GeneralMagneticField;
 #else
@@ -225,12 +232,23 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
     const int slot = (*active)[i];
 
     Track &currentTrack = electrons[slot];
+
+    // Stage the prefetching of the track eKin
+    // __pipeline_memcpy_async(&eKinShared[threadIdx.x], &currentTrack.eKin, 8);
+    // __pipeline_memcpy_async(&safetyShared[threadIdx.x], &currentTrack.safety, 4);
+    // __pipeline_commit();
+    eKinShared[threadIdx.x]   = currentTrack.eKin;
+    safetyShared[threadIdx.x] = currentTrack.safety;
+
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.currentLvId;
 
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
+
+    pStepLengthShared[threadIdx.x] = theTrack->GetGStepLength();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
     G4HepEmRandomEngine rnge(&currentTrack.rngState);
@@ -244,10 +262,10 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
       int iterDone = -1;
       currentTrack.geometryStepLength =
           fieldPropagatorRungeKutta<Field_t, RkDriver_t, Precision, AdePTNavigator>::ComputeStepAndNextVolume(
-              magneticField, currentTrack.eKin, restMass, Charge, theTrack->GetGStepLength(), currentTrack.safeLength,
-              currentTrack.pos, currentTrack.dir, currentTrack.navState, currentTrack.nextState, currentTrack.hitsurfID,
-              currentTrack.propagated,
-              /*lengthDone,*/ currentTrack.safety,
+              magneticField, eKinShared[threadIdx.x], restMass, Charge, pStepLengthShared[threadIdx.x],
+              currentTrack.safeLength, currentTrack.pos, currentTrack.dir, currentTrack.navState,
+              currentTrack.nextState, currentTrack.hitsurfID, currentTrack.propagated,
+              /*lengthDone,*/ safetyShared[threadIdx.x],
               // activeSize < 100 ? max_iterations : max_iters_tail ), // Was
               max_iterations, iterDone, slot, zero_first_step);
       // In case of zero step detected by the field propagator this could be due to back scattering, or wrong relocation
@@ -268,7 +286,8 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
       currentTrack.pos += currentTrack.geometryStepLength * currentTrack.dir;
     }
 
-    if (currentTrack.geometryStepLength < kPushStuck && currentTrack.geometryStepLength < theTrack->GetGStepLength()) {
+    if (currentTrack.geometryStepLength < kPushStuck &&
+        currentTrack.geometryStepLength < pStepLengthShared[threadIdx.x]) {
       currentTrack.zeroStepCounter++;
       if (currentTrack.zeroStepCounter > kStepsStuckPush) currentTrack.pos += kPushStuck * currentTrack.dir;
     } else
@@ -301,7 +320,8 @@ __global__ void ElectronMSC(Track *electrons, G4HepEmElectronTrack *hepEMTracks,
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.currentLvId;
 
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
@@ -382,7 +402,8 @@ __global__ void ElectronSetupInteractions(Track *electrons, G4HepEmElectronTrack
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
 
@@ -415,7 +436,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, G4HepEmElectronTrack
     double energyDeposit = theTrack->GetEnergyDeposit();
 
     bool reached_interaction = true;
-    bool printErrors         = true;
+    bool printErrors         = false;
 
     // Save the `number-of-interaction-left` in our track.
     for (int ip = 0; ip < 4; ++ip) {
@@ -541,7 +562,8 @@ __global__ void ElectronRelocation(Track *electrons, G4HepEmElectronTrack *hepEM
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
 
@@ -572,7 +594,7 @@ __global__ void ElectronRelocation(Track *electrons, G4HepEmElectronTrack *hepEM
     double energyDeposit = theTrack->GetEnergyDeposit();
 
     bool cross_boundary = false;
-    bool printErrors    = true;
+    bool printErrors    = false;
 
     // Relocate to have the correct next state before RecordHit is called
 
@@ -638,7 +660,10 @@ __global__ void ElectronRelocation(Track *electrons, G4HepEmElectronTrack *hepEM
       // Move to the next boundary now that the Step is recorded
       currentTrack.navState = currentTrack.nextState;
       // Check if the next volume belongs to the GPU region and push it to the appropriate queue
-      const int nextlvolID          = currentTrack.navState.GetLogicalId();
+      const int nextlvolID = currentTrack.navState.GetLogicalId();
+      // Update the volume id on the track
+      currentTrack.currentLvId = nextlvolID;
+
       VolAuxData const &nextauxData = AsyncAdePT::gVolAuxData[nextlvolID];
       if (nextauxData.fGPUregion > 0) {
         survive();
@@ -685,12 +710,13 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
 
       Track &gamma1 = secondaries.gammas.NextTrack(newRNG, double{copcore::units::kElectronMassC2}, currentTrack.pos,
                                                    vecgeom::Vector3D<Precision>{sint * cosPhi, sint * sinPhi, cost},
-                                                   currentTrack.navState, currentTrack, currentTrack.globalTime);
+                                                   currentTrack.navState, currentTrack, currentTrack.globalTime,
+                                                   currentTrack.currentLvId);
 
       // Reuse the RNG state of the dying track.
-      Track &gamma2 =
-          secondaries.gammas.NextTrack(currentTrack.rngState, double{copcore::units::kElectronMassC2}, currentTrack.pos,
-                                       -gamma1.dir, currentTrack.navState, currentTrack, currentTrack.globalTime);
+      Track &gamma2 = secondaries.gammas.NextTrack(currentTrack.rngState, double{copcore::units::kElectronMassC2},
+                                                   currentTrack.pos, -gamma1.dir, currentTrack.navState, currentTrack,
+                                                   currentTrack.globalTime, currentTrack.currentLvId);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -751,7 +777,8 @@ __global__ void ElectronIonization(Track *electrons, G4HepEmElectronTrack *hepEM
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
@@ -817,7 +844,7 @@ __global__ void ElectronIonization(Track *electrons, G4HepEmElectronTrack *hepEM
       Track &secondary = secondaries.electrons.NextTrack(
           newRNG, deltaEkin, currentTrack.pos,
           vecgeom::Vector3D<Precision>{dirSecondary[0], dirSecondary[1], dirSecondary[2]}, currentTrack.navState,
-          currentTrack, currentTrack.globalTime);
+          currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -898,7 +925,8 @@ __global__ void ElectronBremsstrahlung(Track *electrons, G4HepEmElectronTrack *h
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
@@ -963,10 +991,10 @@ __global__ void ElectronBremsstrahlung(Track *electrons, G4HepEmElectronTrack *h
       energyDeposit += deltaEkin;
 
     } else {
-      Track &gamma =
-          secondaries.gammas.NextTrack(newRNG, deltaEkin, currentTrack.pos,
-                                       vecgeom::Vector3D<Precision>{dirSecondary[0], dirSecondary[1], dirSecondary[2]},
-                                       currentTrack.navState, currentTrack, currentTrack.globalTime);
+      Track &gamma = secondaries.gammas.NextTrack(
+          newRNG, deltaEkin, currentTrack.pos,
+          vecgeom::Vector3D<Precision>{dirSecondary[0], dirSecondary[1], dirSecondary[2]}, currentTrack.navState,
+          currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(userScoring, gamma.trackId, gamma.parentId, /*CreatorProcessId*/ short(1),
@@ -1045,7 +1073,8 @@ __global__ void PositronAnnihilation(Track *electrons, G4HepEmElectronTrack *hep
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
@@ -1107,10 +1136,10 @@ __global__ void PositronAnnihilation(Track *electrons, G4HepEmElectronTrack *hep
       energyDeposit += theGamma1Ekin;
 
     } else {
-      Track &gamma1 =
-          secondaries.gammas.NextTrack(newRNG, theGamma1Ekin, currentTrack.pos,
-                                       vecgeom::Vector3D<Precision>{theGamma1Dir[0], theGamma1Dir[1], theGamma1Dir[2]},
-                                       currentTrack.navState, currentTrack, currentTrack.globalTime);
+      Track &gamma1 = secondaries.gammas.NextTrack(
+          newRNG, theGamma1Ekin, currentTrack.pos,
+          vecgeom::Vector3D<Precision>{theGamma1Dir[0], theGamma1Dir[1], theGamma1Dir[2]}, currentTrack.navState,
+          currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(userScoring, gamma1.trackId, gamma1.parentId, /*CreatorProcessId*/ short(2),
@@ -1138,10 +1167,10 @@ __global__ void PositronAnnihilation(Track *electrons, G4HepEmElectronTrack *hep
       energyDeposit += theGamma2Ekin;
 
     } else {
-      Track &gamma2 =
-          secondaries.gammas.NextTrack(currentTrack.rngState, theGamma2Ekin, currentTrack.pos,
-                                       vecgeom::Vector3D<Precision>{theGamma2Dir[0], theGamma2Dir[1], theGamma2Dir[2]},
-                                       currentTrack.navState, currentTrack, currentTrack.globalTime);
+      Track &gamma2 = secondaries.gammas.NextTrack(
+          currentTrack.rngState, theGamma2Ekin, currentTrack.pos,
+          vecgeom::Vector3D<Precision>{theGamma2Dir[0], theGamma2Dir[1], theGamma2Dir[2]}, currentTrack.navState,
+          currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(userScoring, gamma2.trackId, gamma2.parentId, /*CreatorProcessId*/ short(2),
@@ -1208,7 +1237,8 @@ __global__ void PositronStoppedAnnihilation(Track *electrons, G4HepEmElectronTra
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
-    const int lvolID = currentTrack.navState.GetLogicalId();
+    // const int lvolID = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;

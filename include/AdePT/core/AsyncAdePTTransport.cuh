@@ -199,10 +199,11 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // otherwise, if a particle returns from the device and is injected again (i.e., via lepton nuclear), it would have
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
+    auto lvolId  = trackinfo[i].navState.GetLogicalId();
     Track &track = generator->InitTrack(
         slot, seed, trackInfo.eKin, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
         static_cast<float>(trackInfo.properTime), trackInfo.weight, trackInfo.position, trackInfo.direction,
-        trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
+        trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, lvolId, trackInfo.stepCounter);
     track.navState.Clear();
     track.navState       = trackinfo[i].navState;
     track.originNavState = trackinfo[i].originNavState;

@@ -43,7 +43,7 @@ public:
   /// @param zero_first_step Detected zero first step
   /// @param verbose Verbosity
   /// @return Length of the step made
-  static inline __host__ __device__ Real_t
+  static inline __device__ Real_t
   ComputeStepAndNextVolume(Field_t const &magneticField, double kinE, double mass, int charge, double physicsStep,
                            double safeLength, vecgeom::Vector3D<Real_t> &position, vecgeom::Vector3D<Real_t> &direction,
                            vecgeom::NavigationState const &current_state, vecgeom::NavigationState &next_state,
@@ -96,9 +96,8 @@ fieldPropagatorRungeKutta<Field_t, RkDriver_t, Real_t, Navigator_t>::ComputeSafe
 //  ( Same name as the navigator method. )
 
 template <class Field_t, class RkDriver_t, typename Real_t, class Navigator_t>
-inline __host__ __device__ Real_t
-fieldPropagatorRungeKutta<Field_t, RkDriver_t, Real_t, Navigator_t>::ComputeStepAndNextVolume(
-    Field_t const &magField, double kinE, double mass, int charge, double physicsStep, double safeLength,
+inline __device__ Real_t fieldPropagatorRungeKutta<Field_t, RkDriver_t, Real_t, Navigator_t>::ComputeStepAndNextVolume(
+    Field_t const &magField, const double kinE, const double mass, int charge, double physicsStep, double safeLength,
     vecgeom::Vector3D<Real_t> &position, vecgeom::Vector3D<Real_t> &direction,
     vecgeom::NavigationState const &current_state, vecgeom::NavigationState &next_state, long &hitsurf_index,
     bool &propagated, const Real_t &safetyIn, //  eventually In/Out ?

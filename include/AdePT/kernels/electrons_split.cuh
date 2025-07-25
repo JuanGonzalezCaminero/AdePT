@@ -240,10 +240,6 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
     eKinShared[threadIdx.x]   = currentTrack.eKin;
     safetyShared[threadIdx.x] = currentTrack.safety;
 
-    // the MCC vector is indexed by the logical volume id
-    // const int lvolID = currentTrack.navState.GetLogicalId();
-    // const int lvolID = currentTrack.currentLvId;
-
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
@@ -319,9 +315,6 @@ __global__ void ElectronMSC(Track *electrons, G4HepEmElectronTrack *hepEMTracks,
     const int slot = (*active)[i];
 
     Track &currentTrack = electrons[slot];
-    // the MCC vector is indexed by the logical volume id
-    // const int lvolID = currentTrack.navState.GetLogicalId();
-    // const int lvolID = currentTrack.currentLvId;
 
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];

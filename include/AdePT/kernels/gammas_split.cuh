@@ -114,9 +114,6 @@ __global__ void GammaPropagation(Track *gammas, G4HepEmGammaTrack *hepEMTracks, 
     const int slot      = (*active)[i];
     Track &currentTrack = gammas[slot];
 
-    // int lvolID                = currentTrack.navState.GetLogicalId();
-    // const int lvolID = currentTrack.currentLvId;
-
     G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
 
@@ -169,9 +166,6 @@ __global__ void GammaSetupInteractions(Track *gammas, G4HepEmGammaTrack *hepEMTr
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
     const int slot      = (*active)[i];
     Track &currentTrack = gammas[slot];
-
-    // int lvolID                = currentTrack.navState.GetLogicalId();
-    // const int lvolID = currentTrack.currentLvId;
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
@@ -232,9 +226,6 @@ __global__ void GammaRelocation(Track *gammas, G4HepEmGammaTrack *hepEMTracks, S
     const int slot      = (*relocatingQueue)[i];
     auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
-
-    // int lvolID                = currentTrack.navState.GetLogicalId();
-    // const int lvolID = currentTrack.currentLvId;
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {

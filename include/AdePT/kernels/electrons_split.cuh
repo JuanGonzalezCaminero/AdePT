@@ -75,7 +75,7 @@ __global__ void ElectronHowFar(Track *electrons, G4HepEmElectronTrack *hepEMTrac
     currentTrack.preStepPos  = currentTrack.pos;
     currentTrack.preStepDir  = currentTrack.dir;
     currentTrack.stepCounter++;
-    bool printErrors = true;
+    bool printErrors = false;
     if (currentTrack.stepCounter >= maxSteps || currentTrack.zeroStepCounter > kStepsStuckKill) {
       if (printErrors)
         printf("Killing e-/+ event %d track %ld E=%f lvol=%d after %d steps with zeroStepCounter %u\n",
@@ -415,7 +415,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, G4HepEmElectronTrack
     double energyDeposit = theTrack->GetEnergyDeposit();
 
     bool reached_interaction = true;
-    bool printErrors         = true;
+    bool printErrors         = false;
 
     // Save the `number-of-interaction-left` in our track.
     for (int ip = 0; ip < 4; ++ip) {
@@ -572,7 +572,7 @@ __global__ void ElectronRelocation(Track *electrons, G4HepEmElectronTrack *hepEM
     double energyDeposit = theTrack->GetEnergyDeposit();
 
     bool cross_boundary = false;
-    bool printErrors    = true;
+    bool printErrors    = false;
 
     // Relocate to have the correct next state before RecordHit is called
 

@@ -61,6 +61,11 @@ struct Track {
 
   unsigned int eventId{0};
   short threadId{-1};
+
+#ifdef USE_SPLIT_KERNELS
+  unsigned int currentLvId{0};
+#endif
+
   unsigned short stepCounter{0};
   unsigned short looperCounter{0};
   unsigned short zeroStepCounter{0};
@@ -83,10 +88,10 @@ struct Track {
   /// NB: The navState remains uninitialised.
   __device__ Track(uint64_t rngSeed, double eKin, double globalTime, float localTime, float properTime, float weight,
                    double const position[3], double const direction[3], unsigned int eventId, uint64_t trackId,
-                   uint64_t parentId, short threadId, unsigned short stepCounter)
+                   uint64_t parentId, short threadId, uint lvolId, unsigned short stepCounter)
       : eKin{eKin}, weight{weight}, globalTime{globalTime}, localTime{localTime}, properTime{properTime},
-        eventId{eventId}, trackId{trackId}, parentId{parentId}, threadId{threadId}, stepCounter{stepCounter},
-        looperCounter{0}, zeroStepCounter{0}
+        eventId{eventId}, trackId{trackId}, parentId{parentId}, threadId{threadId}, currentLvId{lvolId},
+        stepCounter{stepCounter}, looperCounter{0}, zeroStepCounter{0}
   {
     rngState.SetSeed(rngSeed);
     pos        = {position[0], position[1], position[2]};
@@ -98,11 +103,11 @@ struct Track {
   /// NB: The caller is responsible to branch a new RNG state.
   __device__ Track(RanluxppDouble const &rng_state, double eKin, const vecgeom::Vector3D<Precision> &parentPos,
                    const vecgeom::Vector3D<Precision> &newDirection, const vecgeom::NavigationState &newNavState,
-                   const Track &parentTrack, const double globalTime)
+                   const Track &parentTrack, const double globalTime, uint parentLvId)
       : rngState{rng_state}, eKin{eKin}, globalTime{globalTime}, pos{parentPos}, dir{newDirection},
         navState{newNavState}, originNavState{newNavState}, trackId{rngState.IntRndm64()}, eventId{parentTrack.eventId},
-        parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, weight{parentTrack.weight}, stepCounter{0},
-        looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
+        parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, weight{parentTrack.weight},
+        currentLvId{parentLvId}, stepCounter{0}, looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
 
@@ -148,7 +153,8 @@ struct Track {
   __host__ __device__ double Uniform() { return rngState.Rndm(); }
 
   __host__ __device__ void InitAsSecondary(const vecgeom::Vector3D<Precision> &parentPos,
-                                           const vecgeom::NavigationState &parentNavState, double gTime)
+                                           const vecgeom::NavigationState &parentNavState, double gTime,
+                                           uint parentLvId)
   {
     // The caller is responsible to branch a new RNG state and to set the energy.
     this->numIALeft[0] = -1.0;
@@ -176,6 +182,8 @@ struct Track {
     this->globalTime = gTime;
     this->localTime  = 0.;
     this->properTime = 0.;
+
+    this->currentLvId = parentLvId;
 
     this->stepCounter     = 0;
     this->looperCounter   = 0;

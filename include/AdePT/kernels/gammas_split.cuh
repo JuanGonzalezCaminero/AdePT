@@ -32,7 +32,9 @@ __global__ void GammaHowFar(Track *gammas, G4HepEmGammaTrack *hepEMTracks, const
     const int slot      = (*active)[i];
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    // int lvolID                = currentTrack.navState.GetLogicalId();
+    const int lvolID = currentTrack.currentLvId;
+
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
 
     currentTrack.leaked      = false;
@@ -112,8 +114,6 @@ __global__ void GammaPropagation(Track *gammas, G4HepEmGammaTrack *hepEMTracks, 
     const int slot      = (*active)[i];
     Track &currentTrack = gammas[slot];
 
-    int lvolID = currentTrack.navState.GetLogicalId();
-
     G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
 
@@ -166,8 +166,6 @@ __global__ void GammaSetupInteractions(Track *gammas, G4HepEmGammaTrack *hepEMTr
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
     const int slot      = (*active)[i];
     Track &currentTrack = gammas[slot];
-
-    int lvolID = currentTrack.navState.GetLogicalId();
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
@@ -228,8 +226,6 @@ __global__ void GammaRelocation(Track *gammas, G4HepEmGammaTrack *hepEMTracks, S
     const int slot      = (*relocatingQueue)[i];
     auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
-
-    int lvolID = currentTrack.navState.GetLogicalId();
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
@@ -299,7 +295,9 @@ __global__ void GammaRelocation(Track *gammas, G4HepEmGammaTrack *hepEMTracks, S
       currentTrack.navState = currentTrack.nextState;
       // printf("  -> pvol=%d pos={%g, %g, %g} \n", navState.TopId(), pos[0], pos[1], pos[2]);
       //  Check if the next volume belongs to the GPU region and push it to the appropriate queue
-      const int nextlvolID          = currentTrack.navState.GetLogicalId();
+      const int nextlvolID     = currentTrack.navState.GetLogicalId();
+      currentTrack.currentLvId = nextlvolID;
+
       VolAuxData const &nextauxData = AsyncAdePT::gVolAuxData[nextlvolID];
       if (nextauxData.fGPUregion > 0) {
         survive();
@@ -355,7 +353,8 @@ __global__ void GammaConversion(Track *gammas, G4HepEmGammaTrack *hepEMTracks, S
     auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    // int lvolID                = currentTrack.navState.GetLogicalId();
+    const int lvolID          = currentTrack.currentLvId;
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
@@ -422,7 +421,7 @@ __global__ void GammaConversion(Track *gammas, G4HepEmGammaTrack *hepEMTracks, S
       Track &electron = secondaries.electrons.NextTrack(
           newRNG, elKinEnergy, currentTrack.pos,
           vecgeom::Vector3D<Precision>{dirSecondaryEl[0], dirSecondaryEl[1], dirSecondaryEl[2]}, currentTrack.navState,
-          currentTrack, currentTrack.globalTime);
+          currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -455,7 +454,7 @@ __global__ void GammaConversion(Track *gammas, G4HepEmGammaTrack *hepEMTracks, S
       Track &positron = secondaries.positrons.NextTrack(
           currentTrack.rngState, posKinEnergy, currentTrack.pos,
           vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]},
-          currentTrack.navState, currentTrack, currentTrack.globalTime);
+          currentTrack.navState, currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -527,7 +526,8 @@ __global__ void GammaCompton(Track *gammas, G4HepEmGammaTrack *hepEMTracks, Seco
     auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    // int lvolID                = currentTrack.navState.GetLogicalId();
+    const int lvolID          = currentTrack.currentLvId;
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
@@ -587,7 +587,7 @@ __global__ void GammaCompton(Track *gammas, G4HepEmGammaTrack *hepEMTracks, Seco
       // Create a secondary electron and sample/compute directions.
       Track &electron = secondaries.electrons.NextTrack(
           newRNG, energyEl, currentTrack.pos, currentTrack.eKin * currentTrack.dir - newEnergyGamma * newDirGamma,
-          currentTrack.navState, currentTrack, currentTrack.globalTime);
+          currentTrack.navState, currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
       electron.dir.Normalize();
 
       // if tracking or stepping action is called, return initial step
@@ -673,7 +673,8 @@ __global__ void GammaPhotoelectric(Track *gammas, G4HepEmGammaTrack *hepEMTracks
     auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    // int lvolID                = currentTrack.navState.GetLogicalId();
+    const int lvolID          = currentTrack.currentLvId;
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
@@ -732,7 +733,7 @@ __global__ void GammaPhotoelectric(Track *gammas, G4HepEmGammaTrack *hepEMTracks
       Track &electron = secondaries.electrons.NextTrack(
           newRNG, photoElecE, currentTrack.pos,
           vecgeom::Vector3D<Precision>{dirPhotoElec[0], dirPhotoElec[1], dirPhotoElec[2]}, currentTrack.navState,
-          currentTrack, currentTrack.globalTime);
+          currentTrack, currentTrack.globalTime, currentTrack.currentLvId);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {

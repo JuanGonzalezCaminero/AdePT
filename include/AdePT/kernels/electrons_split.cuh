@@ -210,6 +210,10 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
   constexpr Precision kPushStuck           = 100 * vecgeom::kTolerance;
   constexpr unsigned short kStepsStuckPush = 5;
 
+  __shared__ double eKinShared[32];        // 32 is the block size
+  __shared__ double pStepLengthShared[32]; // 32 is the block size
+  __shared__ float safetyShared[32];       // 32 is the block size
+
 #ifdef ADEPT_USE_EXT_BFIELD
   using Field_t = GeneralMagneticField;
 #else
@@ -227,9 +231,18 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
 
     Track &currentTrack = electrons[slot];
 
+    // Stage the prefetching of the track eKin
+    // __pipeline_memcpy_async(&eKinShared[threadIdx.x], &currentTrack.eKin, 8);
+    // __pipeline_memcpy_async(&safetyShared[threadIdx.x], &currentTrack.safety, 4);
+    // __pipeline_commit();
+    eKinShared[threadIdx.x]   = currentTrack.eKin;
+    safetyShared[threadIdx.x] = currentTrack.safety;
+
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
+
+    pStepLengthShared[threadIdx.x] = theTrack->GetGStepLength();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
     G4HepEmRandomEngine rnge(&currentTrack.rngState);
@@ -243,10 +256,10 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
       int iterDone = -1;
       currentTrack.geometryStepLength =
           fieldPropagatorRungeKutta<Field_t, RkDriver_t, Precision, AdePTNavigator>::ComputeStepAndNextVolume(
-              magneticField, currentTrack.eKin, restMass, Charge, theTrack->GetGStepLength(), currentTrack.safeLength,
-              currentTrack.pos, currentTrack.dir, currentTrack.navState, currentTrack.nextState, currentTrack.hitsurfID,
-              currentTrack.propagated,
-              /*lengthDone,*/ currentTrack.safety,
+              magneticField, eKinShared[threadIdx.x], restMass, Charge, pStepLengthShared[threadIdx.x],
+              currentTrack.safeLength, currentTrack.pos, currentTrack.dir, currentTrack.navState,
+              currentTrack.nextState, currentTrack.hitsurfID, currentTrack.propagated,
+              /*lengthDone,*/ safetyShared[threadIdx.x],
               // activeSize < 100 ? max_iterations : max_iters_tail ), // Was
               max_iterations, iterDone, slot, zero_first_step);
       // In case of zero step detected by the field propagator this could be due to back scattering, or wrong relocation
@@ -267,7 +280,8 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
       currentTrack.pos += currentTrack.geometryStepLength * currentTrack.dir;
     }
 
-    if (currentTrack.geometryStepLength < kPushStuck && currentTrack.geometryStepLength < theTrack->GetGStepLength()) {
+    if (currentTrack.geometryStepLength < kPushStuck &&
+        currentTrack.geometryStepLength < pStepLengthShared[threadIdx.x]) {
       currentTrack.zeroStepCounter++;
       if (currentTrack.zeroStepCounter > kStepsStuckPush) currentTrack.pos += kPushStuck * currentTrack.dir;
     } else

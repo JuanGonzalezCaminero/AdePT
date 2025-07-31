@@ -21,8 +21,8 @@ public:
   // DormandPrinceRK45(const DormandPrinceRK45 &) = delete;
   // ~DormandPrinceRK45() {}
 
-  static __host__ __device__ void EvaluateDerivatives(const T_Field &field, const Real_t y[], int charge,
-                                                      Real_t dydx[]);
+  static __host__ __device__ void EvaluateDerivatives(const T_Field &field, const Real_t y[], int charge, Real_t dydx[],
+                                                      const vecgeom::Vector3D<Real_t> &Bvec);
 
   static __host__ __device__ void StepWithErrorEstimate(const T_Field &field, const Real_t *yIn, const Real_t *dydx,
                                                         int charge, Real_t Step,
@@ -32,10 +32,8 @@ public:
 };
 
 template <class Equation_t, class T_Field, unsigned int Nvar, typename Real_t>
-__host__ __device__ void DormandPrinceRK45<Equation_t, T_Field, Nvar, Real_t>::EvaluateDerivatives(const T_Field &field,
-                                                                                                   const Real_t yIn[],
-                                                                                                   int charge,
-                                                                                                   Real_t dy_ds[])
+__host__ __device__ void DormandPrinceRK45<Equation_t, T_Field, Nvar, Real_t>::EvaluateDerivatives(
+    const T_Field &field, const Real_t yIn[], int charge, Real_t dy_ds[], const vecgeom::Vector3D<Real_t> &Bvec)
 {
   /* #ifdef VERBOSE_RHS
       using geant::units::tesla;
@@ -47,7 +45,7 @@ __host__ __device__ void DormandPrinceRK45<Equation_t, T_Field, Nvar, Real_t>::E
   // Vector3D<Real_t> Bfield;
   // Equation_t::EvaluateDerivativesReturnB( field, yIn, charge, dy_ds, Bfield );
 
-  Equation_t::EvaluateDerivatives(/* const T_Field& */ field, yIn, charge, dy_ds);
+  Equation_t::EvaluateDerivatives(/* const T_Field& */ field, yIn, charge, dy_ds, Bvec);
 
   /*********
    using copcore::units::tesla;
@@ -99,50 +97,75 @@ inline __host__ __device__ void DormandPrinceRK45<Equation_t, T_Field, Nvar, Rea
 
   Real_t ak2[Nvar], yTemp[Nvar];
   {
-    for (unsigned int i = 0; i < Nvar; i++) {
+    for (unsigned int i = 0; i < 3; i++) {
       yTemp[i] = yIn[i] + b21 * Step * dydx[i];
     }
-    EvaluateDerivatives(field, yTemp, charge, ak2); // 2nd Step
+    const vecgeom::Vector3D<Real_t> Bvec = field.Evaluate(yTemp[0], yTemp[1], yTemp[2]);
+    for (unsigned int i = 3; i < 6; i++) {
+      yTemp[i] = yIn[i] + b21 * Step * dydx[i];
+    }
+    EvaluateDerivatives(field, yTemp, charge, ak2, Bvec); // 2nd Step
   }
 
   Real_t ak3[Nvar];
   {
-    for (unsigned int i = 0; i < Nvar; i++) {
+    for (unsigned int i = 0; i < 3; i++) {
       yTemp[i] = yIn[i] + Step * (b31 * dydx[i] + b32 * ak2[i]);
     }
-    EvaluateDerivatives(field, yTemp, charge, ak3); // 3rd Step
+    const vecgeom::Vector3D<Real_t> Bvec = field.Evaluate(yTemp[0], yTemp[1], yTemp[2]);
+    for (unsigned int i = 3; i < 6; i++) {
+      yTemp[i] = yIn[i] + Step * (b31 * dydx[i] + b32 * ak2[i]);
+    }
+    EvaluateDerivatives(field, yTemp, charge, ak3, Bvec); // 3rd Step
   }
 
   Real_t ak4[Nvar];
   {
-    for (unsigned int i = 0; i < Nvar; i++) {
+    for (unsigned int i = 0; i < 3; i++) {
       yTemp[i] = yIn[i] + Step * (b41 * dydx[i] + b42 * ak2[i] + b43 * ak3[i]);
     }
-    EvaluateDerivatives(field, yTemp, charge, ak4); // 4th Step
+    const vecgeom::Vector3D<Real_t> Bvec = field.Evaluate(yTemp[0], yTemp[1], yTemp[2]);
+    for (unsigned int i = 3; i < 6; i++) {
+      yTemp[i] = yIn[i] + Step * (b41 * dydx[i] + b42 * ak2[i] + b43 * ak3[i]);
+    }
+    EvaluateDerivatives(field, yTemp, charge, ak4, Bvec); // 4th Step
   }
 
   Real_t ak5[Nvar];
   {
-    for (unsigned int i = 0; i < Nvar; i++) {
+    for (unsigned int i = 0; i < 3; i++) {
       yTemp[i] = yIn[i] + Step * (b51 * dydx[i] + b52 * ak2[i] + b53 * ak3[i] + b54 * ak4[i]);
     }
-    EvaluateDerivatives(field, yTemp, charge, ak5); // 5th Step
+    const vecgeom::Vector3D<Real_t> Bvec = field.Evaluate(yTemp[0], yTemp[1], yTemp[2]);
+    for (unsigned int i = 3; i < 6; i++) {
+      yTemp[i] = yIn[i] + Step * (b51 * dydx[i] + b52 * ak2[i] + b53 * ak3[i] + b54 * ak4[i]);
+    }
+    EvaluateDerivatives(field, yTemp, charge, ak5, Bvec); // 5th Step
   }
 
   Real_t ak6[Nvar];
   {
-    for (unsigned int i = 0; i < Nvar; i++) {
+    for (unsigned int i = 0; i < 3; i++) {
       yTemp[i] = yIn[i] + Step * (b61 * dydx[i] + b62 * ak2[i] + b63 * ak3[i] + b64 * ak4[i] + b65 * ak5[i]);
     }
-    EvaluateDerivatives(field, yTemp, charge, ak6); // 6th Step
+    const vecgeom::Vector3D<Real_t> Bvec = field.Evaluate(yTemp[0], yTemp[1], yTemp[2]);
+    for (unsigned int i = 3; i < 6; i++) {
+      yTemp[i] = yIn[i] + Step * (b61 * dydx[i] + b62 * ak2[i] + b63 * ak3[i] + b64 * ak4[i] + b65 * ak5[i]);
+    }
+    EvaluateDerivatives(field, yTemp, charge, ak6, Bvec); // 6th Step
   }
 
   // Real_t ak7[Nvar];  // -> Replaced by next_dydx
-  for (unsigned int i = 0; i < Nvar; i++) {
+  for (unsigned int i = 0; i < 3; i++) {
     yOut[i] =
         yIn[i] + Step * (b71 * dydx[i] + b72 * ak2[i] + b73 * ak3[i] + b74 * ak4[i] + b75 * ak5[i] + b76 * ak6[i]);
   }
-  EvaluateDerivatives(field, yOut, charge, next_dydx); // 7th and Final stage
+  const vecgeom::Vector3D<Real_t> Bvec = field.Evaluate(yOut[0], yOut[1], yOut[2]);
+  for (unsigned int i = 3; i < 6; i++) {
+    yOut[i] =
+        yIn[i] + Step * (b71 * dydx[i] + b72 * ak2[i] + b73 * ak3[i] + b74 * ak4[i] + b75 * ak5[i] + b76 * ak6[i]);
+  }
+  EvaluateDerivatives(field, yOut, charge, next_dydx, Bvec); // 7th and Final stage
 
   for (unsigned int i = 0; i < Nvar; i++) {
     // Estimate error as difference between 4th and 5th order methods

@@ -22,10 +22,11 @@ class MagneticFieldEquation {
 public:
   template <typename Real_t>
   static inline __host__ __device__ void EvaluateDerivatives(MagneticField_t const &magField, const Real_t y[],
-                                                             int charge, Real_t dy_ds[])
+                                                             int charge, Real_t dy_ds[],
+                                                             const vecgeom::Vector3D<Real_t> &Bvec)
   {
     // Inline evaluation to avoid redundant calls
-    const vecgeom::Vector3D<Real_t> Bvec = magField.Evaluate(y[0], y[1], y[2]);
+    // const vecgeom::Vector3D<Real_t> Bvec = magField.Evaluate(y[0], y[1], y[2]);
     // just for testing purposes if the uniform magnetic field from file is correct - SLOWS DOWN THE CODE SIGNIFICANTLY
     // if(Bvec[2] < 0.0037999 || Bvec[2] > 0.00380001) {
     //   printf("Magnetic field seems off!! (%f, %f, %f) is (%f, %f, %f)\n",

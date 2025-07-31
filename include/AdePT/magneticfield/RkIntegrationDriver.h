@@ -101,11 +101,13 @@ inline __host__ __device__ bool RkIntegrationDriver<Stepper_t, Real_t, Int_t, Eq
 {
   using vecgeom::Vector3D;
 
+  const vecgeom::Vector3D<Real_t> Bvec = magField.Evaluate(position[0], position[1], position[2]);
+
   Real_t yStart[Nvar] = {position[0], position[1], position[2], momentumVec[0], momentumVec[1], momentumVec[2]};
   Real_t dydx[Nvar];
   Real_t yEnd[Nvar];
 
-  Equation_t::EvaluateDerivatives(magField, yStart, chargeInt, dydx);
+  Equation_t::EvaluateDerivatives(magField, yStart, chargeInt, dydx, Bvec);
 
   Real_t stepAdvance = 0.0;
   // For first cord integration try full cordlength otherwise use last step from previous cord integration

@@ -212,6 +212,7 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
 
   __shared__ double eKinShared[32];        // 32 is the block size
   __shared__ double pStepLengthShared[32]; // 32 is the block size
+  __shared__ double safeLengthShared[32];  // 32 is the block size
   __shared__ float safetyShared[32];       // 32 is the block size
 
 #ifdef ADEPT_USE_EXT_BFIELD
@@ -235,8 +236,9 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
     // __pipeline_memcpy_async(&eKinShared[threadIdx.x], &currentTrack.eKin, 8);
     // __pipeline_memcpy_async(&safetyShared[threadIdx.x], &currentTrack.safety, 4);
     // __pipeline_commit();
-    eKinShared[threadIdx.x]   = currentTrack.eKin;
-    safetyShared[threadIdx.x] = currentTrack.safety;
+    eKinShared[threadIdx.x]       = currentTrack.eKin;
+    safetyShared[threadIdx.x]     = currentTrack.safety;
+    safeLengthShared[threadIdx.x] = currentTrack.safeLength;
 
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
@@ -257,7 +259,7 @@ __global__ void ElectronPropagation(Track *electrons, G4HepEmElectronTrack *hepE
       currentTrack.geometryStepLength =
           fieldPropagatorRungeKutta<Field_t, RkDriver_t, Precision, AdePTNavigator>::ComputeStepAndNextVolume(
               magneticField, eKinShared[threadIdx.x], restMass, Charge, pStepLengthShared[threadIdx.x],
-              currentTrack.safeLength, currentTrack.pos, currentTrack.dir, currentTrack.navState,
+              safeLengthShared[threadIdx.x], currentTrack.pos, currentTrack.dir, currentTrack.navState,
               currentTrack.nextState, currentTrack.hitsurfID, currentTrack.propagated,
               /*lengthDone,*/ safetyShared[threadIdx.x],
               // activeSize < 100 ? max_iterations : max_iters_tail ), // Was

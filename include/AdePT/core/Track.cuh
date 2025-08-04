@@ -15,13 +15,46 @@
 #include <G4HepEmRandomEngine.hh>
 #endif
 
+struct SoATrack {
+  uint fNSlot;
+  double *fEkin;
+
+  __host__ __device__ void InitOnDevice(void *devPtr, int nSlot)
+  {
+    fNSlot = nSlot;
+    fEkin  = reinterpret_cast<double *>(devPtr);
+    // Move devPtr
+    devPtr = fEkin + fNSlot * sizeof(double);
+    // Follow with any new arrays
+  }
+
+  // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
+  template <typename... Args>
+  __device__ void InitTrack(int trackIdx, double eKin, Args...)
+  {
+    // fRngState[trackIdx].SetSeed(rngSeed);
+    fEkin[trackIdx] = eKin;
+  }
+
+  // Needed when passing vectors (in this case this function should receive a reference)
+  /// Construct a secondary from a parent track.
+  // template <typename... Args>
+  // __device__ void InitTrack(int trackIdx, double const eKin, Args...)
+  // {
+  //   // fRngState[trackIdx] = rngState;
+  //   fEkin[trackIdx] = eKin;
+  // }
+
+  // __host__ __device__ double Uniform(int trackIdx) { return fRngState[trackIdx].Rndm(); }
+};
+
 // A data structure to represent a particle track. The particle type is implicit
 // by the queue and not stored in memory.
 struct Track {
   using Precision = vecgeom::Precision;
 
   RanluxppDouble rngState;
-  double eKin{0.};
+  // double eKin{0.};
   double globalTime{0.};
 
   float weight{0.};
@@ -59,6 +92,8 @@ struct Track {
   uint64_t trackId{0};  ///< track id (non-consecutive, reproducible)
   uint64_t parentId{0}; // track id of the parent
 
+  unsigned int currentSlot{0};
+
   unsigned int eventId{0};
   short threadId{-1};
   unsigned short stepCounter{0};
@@ -77,10 +112,11 @@ struct Track {
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
-  __device__ Track(uint64_t rngSeed, double eKin, double globalTime, float localTime, float properTime, float weight,
-                   double const position[3], double const direction[3], unsigned int eventId, uint64_t trackId,
-                   uint64_t parentId, short threadId, unsigned short stepCounter)
-      : eKin{eKin}, weight{weight}, globalTime{globalTime}, localTime{localTime}, properTime{properTime},
+  __device__ Track(double eKin, uint64_t rngSeed /*, double eKin*/, double globalTime, float localTime,
+                   float properTime, float weight, double const position[3], double const direction[3],
+                   unsigned int eventId, uint64_t trackId, uint64_t parentId, short threadId,
+                   unsigned short stepCounter)
+      : /*eKin{eKin},*/ weight{weight}, globalTime{globalTime}, localTime{localTime}, properTime{properTime},
         eventId{eventId}, trackId{trackId}, parentId{parentId}, threadId{threadId}, stepCounter{stepCounter},
         looperCounter{0}, zeroStepCounter{0}
   {
@@ -92,10 +128,10 @@ struct Track {
 
   /// Construct a secondary from a parent track.
   /// NB: The caller is responsible to branch a new RNG state.
-  __device__ Track(RanluxppDouble const &rng_state, double eKin, const vecgeom::Vector3D<Precision> &parentPos,
-                   const vecgeom::Vector3D<Precision> &newDirection, const vecgeom::NavigationState &newNavState,
-                   const Track &parentTrack, const double globalTime)
-      : rngState{rng_state}, eKin{eKin}, globalTime{globalTime}, pos{parentPos}, dir{newDirection},
+  __device__ Track(double eKin, RanluxppDouble const &rng_state /*, double eKin*/,
+                   const vecgeom::Vector3D<Precision> &parentPos, const vecgeom::Vector3D<Precision> &newDirection,
+                   const vecgeom::NavigationState &newNavState, const Track &parentTrack, const double globalTime)
+      : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, pos{parentPos}, dir{newDirection},
         navState{newNavState}, originNavState{newNavState}, trackId{rngState.IntRndm64()}, eventId{parentTrack.eventId},
         parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, weight{parentTrack.weight}, stepCounter{0},
         looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
@@ -111,10 +147,10 @@ struct Track {
 
   __host__ __device__ void Print(const char *label) const
   {
-    printf("== evt %u parentId %lu %s id %lu step %d ekin %g MeV | pos {%.19f, %.19f, %.19f} dir {%.19f, %.19f, "
-           "%.19f} remain_safe %g loop %u\n| | state: ",
-           eventId, parentId, label, trackId, stepCounter, eKin / copcore::units::MeV, pos[0], pos[1], pos[2], dir[0],
-           dir[1], dir[2], GetSafety(pos), looperCounter);
+    // printf("== evt %u parentId %lu %s id %lu step %d ekin %g MeV | pos {%.19f, %.19f, %.19f} dir {%.19f, %.19f, "
+    //        "%.19f} remain_safe %g loop %u\n| | state: ",
+    //        eventId, parentId, label, trackId, stepCounter, eKin / copcore::units::MeV, pos[0], pos[1], pos[2],
+    //        dir[0], dir[1], dir[2], GetSafety(pos), looperCounter);
     navState.Print();
   }
 
@@ -182,16 +218,17 @@ struct Track {
 
   __host__ __device__ void CopyTo(adeptint::TrackData &tdata, int pdg)
   {
-    tdata.pdg            = pdg;
-    tdata.trackId        = trackId;
-    tdata.parentId       = parentId;
-    tdata.position[0]    = pos[0];
-    tdata.position[1]    = pos[1];
-    tdata.position[2]    = pos[2];
-    tdata.direction[0]   = dir[0];
-    tdata.direction[1]   = dir[1];
-    tdata.direction[2]   = dir[2];
-    tdata.eKin           = eKin;
+    tdata.pdg          = pdg;
+    tdata.trackId      = trackId;
+    tdata.parentId     = parentId;
+    tdata.position[0]  = pos[0];
+    tdata.position[1]  = pos[1];
+    tdata.position[2]  = pos[2];
+    tdata.direction[0] = dir[0];
+    tdata.direction[1] = dir[1];
+    tdata.direction[2] = dir[2];
+    // TODO: Fix for sync mode
+    // tdata.eKin           = eKin;
     tdata.globalTime     = globalTime;
     tdata.localTime      = localTime;
     tdata.properTime     = properTime;

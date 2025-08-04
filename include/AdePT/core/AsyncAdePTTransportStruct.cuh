@@ -29,15 +29,16 @@ namespace AsyncAdePT {
 struct ParticleGenerator {
   Track *fTracks;
   Track *fInjectedTracks;
+  SoATrack *fSoATracks;
   SlotManager *fSlotManager;
   SlotManager *fSlotManagerLeaks;
   SlotManager *fSlotManagerInjection;
   adept::MParray *fActiveQueue;
 
 public:
-  __host__ __device__ ParticleGenerator(Track *tracks, Track *injectedTracks, SlotManager *slotManager,
-                                        SlotManager *slotManagerLeaks, SlotManager *slotManagerInjection,
-                                        adept::MParray *activeQueue)
+  __host__ __device__ ParticleGenerator(Track *tracks, SoATrack *soaTracks, Track *injectedTracks,
+                                        SlotManager *slotManager, SlotManager *slotManagerLeaks,
+                                        SlotManager *slotManagerInjection, adept::MParray *activeQueue)
       : fTracks(tracks), fInjectedTracks(injectedTracks), fSlotManager(slotManager),
         fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection), fActiveQueue(activeQueue)
   {
@@ -54,6 +55,9 @@ public:
   template <typename... Ts>
   __device__ Track &InitTrack(SlotManager::value_type slot, Ts &&...args)
   {
+    // Initialize the values in the SoA storage
+    fSoATracks->InitTrack(slot, std::forward<Ts>(args)...);
+    // Init the main track
     return *new (fTracks + slot) Track{std::forward<Ts>(args)...};
   }
 
@@ -70,7 +74,11 @@ public:
   {
     const auto slot = NextSlot();
     fActiveQueue->push_back(slot);
-    auto &track = InitTrack(slot, std::forward<Ts>(args)...);
+    // Initialize the values in the SoA storage
+    fSoATracks->InitTrack(slot, std::forward<Ts>(args)...);
+    // Init the main track
+    auto &track       = InitTrack(slot, std::forward<Ts>(args)...);
+    track.currentSlot = slot;
     return track;
   }
 
@@ -110,6 +118,12 @@ struct AllLeaked {
   LeakedTracks leakedElectrons;
   LeakedTracks leakedPositrons;
   LeakedTracks leakedGammas;
+};
+
+struct AllSoA {
+  SoATrack *electrons;
+  SoATrack *positrons;
+  SoATrack *gammas;
 };
 
 // A bundle of queues per particle type:
@@ -161,6 +175,7 @@ dynamic allocations
 // Holds all information needed to manage in-flight tracks of one type
 struct ParticleType {
   Track *tracks;
+  SoATrack *soaTrack;
   Track *leaks;
   Track *injected;
   SlotManager *slotManager;

@@ -23,6 +23,11 @@
 #include <G4HepEmGammaTrack.hh>
 #endif
 
+#include <thrust/device_ptr.h>
+#include <thrust/scan.h>
+#include <thrust/reduce.h>
+#include <thrust/execution_policy.h>
+
 namespace AsyncAdePT {
 
 // A bundle of pointers to generate particles of an implicit type.
@@ -172,6 +177,63 @@ dynamic allocations
   void SwapLeakedQueue() { std::swap(leakedTracksCurrent, leakedTracksNext); }
 };
 
+__global__ void ClearOccupiedFlags(unsigned int nItems, short *scanFlags)
+{
+  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nItems; i += blockDim.x) {
+    scanFlags[i] = 0;
+  }
+}
+
+__global__ void MarkOccupiedSlots(adept::MParray *activeQueue, short *scanFlags)
+{
+  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < activeQueue->size(); i += blockDim.x) {
+    scanFlags[(*activeQueue)[i]] = 1;
+  }
+}
+
+__global__ void CompactCopy(unsigned int nItems, Track *tracks, SoATrack *soaTrack, short *scanFlags, int *scanResult,
+                            G4HepEmElectronTrack *electronsHepEm)
+{
+  // Note: would be more efficient to compute the max occupied index and use it to limit the for loop
+  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nItems; i += blockDim.x) {
+    // If the slot is occupied, the scan result indicates the destination
+    auto dest = scanResult[i];
+    if (scanFlags[i] && dest != i) {
+      // Copy AdePT Tracks
+      tracks[dest] = tracks[i];
+      // Copy AdePT SoA Tracks
+      soaTrack->fEkin[dest] = soaTrack->fEkin[i];
+      // Copy G4HepEm tracks
+      electronsHepEm[dest] = electronsHepEm[i];
+    }
+  }
+}
+
+__global__ void UpdateActiveIdx(adept::MParray *activeQueue, SlotManager *slotManager)
+{
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    printf("Nused before %ld\n", activeQueue->size());
+
+    activeQueue->fNbooked.store(0);
+    activeQueue->fNused.store(slotManager->fSlotCounter);
+
+    printf("Nused updated %ld\n", activeQueue->size());
+  }
+  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < slotManager->fSlotCounter; i += blockDim.x) {
+    activeQueue->fData[i] = i;
+  }
+}
+
+__global__ void ClearSlotManagerStage1(SlotManager *slotManager)
+{
+  slotManager->PartialClearStage1();
+}
+
+__global__ void ClearSlotManagerStage2(SlotManager *slotManager)
+{
+  slotManager->PartialClearStage2();
+}
+
 // Holds all information needed to manage in-flight tracks of one type
 struct ParticleType {
   Track *tracks;
@@ -182,8 +244,11 @@ struct ParticleType {
   SlotManager *slotManagerLeaks;
   SlotManager *slotManagerInjection;
   ParticleQueues queues;
+  short *scanFlags;
+  int *scanResult;
   cudaStream_t stream;
   cudaEvent_t event;
+  uint nItems;
 
   enum {
     Electron = 0,
@@ -193,6 +258,41 @@ struct ParticleType {
     NumParticleTypes,
   };
   static constexpr double relativeQueueSize[] = {0.35, 0.15, 0.5};
+
+  void Defragment(/*unsigned int nItems, short *scanFlags, int *scanResult*/ G4HepEmElectronTrack *electronsHepEm,
+                  cudaStream_t stream)
+  {
+    // Initialize flags
+    // cudaMemset(scanFlags, 0, nItems * sizeof(short));
+    ClearOccupiedFlags<<<100, 256, 0, stream>>>(nItems, scanFlags);
+
+    // Mark used slots
+    MarkOccupiedSlots<<<100, 256, 0, stream>>>(queues.nextActive, scanFlags);
+
+    // Do the scan
+    // thrust::device_ptr<short> flags_thrust(scanFlags);
+    // thrust::device_ptr<int> scan_thrust(scanResult);
+    // thrust::exclusive_scan(scanFlags, scanFlags + nItems, scanResult);
+
+    thrust::device_ptr<short> flags_thrust(scanFlags);
+    thrust::device_ptr<int> scan_thrust(scanResult);
+    thrust::exclusive_scan(thrust::cuda::par.on(stream), flags_thrust, flags_thrust + nItems, scan_thrust, 0);
+
+    // Copy each item into to its destination:
+    // - Tracks
+    // - SoA elements
+    // - HepEmTracks
+    CompactCopy<<<1, 32, 0, stream>>>(nItems, tracks, soaTrack, scanFlags, scanResult, electronsHepEm);
+
+    // Reset slot manager:
+    // - Set fSlotList[fSlotCounter:] to fSlotCounter..nItems
+    // - Set fFreeCounter to 0 (We should not need to reinitialize the actual free slots list)
+    ClearSlotManagerStage1<<<1000, 32, 0, stream>>>(slotManager);
+    ClearSlotManagerStage2<<<1, 1, 0, stream>>>(slotManager);
+
+    // Reset track indices array
+    UpdateActiveIdx<<<1000, 32, 0, stream>>>(queues.nextActive, slotManager);
+  }
 };
 
 #ifdef USE_SPLIT_KERNELS

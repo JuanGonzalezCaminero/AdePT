@@ -31,13 +31,13 @@ public:
   using Base_t          = copcore::VariableSizeObjectInterface<MParrayT<T>, T>;
   using ArrayData_t     = copcore::VariableSizeObj<T>;
 
-private:
+  // private:
   size_t fCapacity{0};  ///< Maximum number of elements
   AtomicInt_t fNbooked; ///< Number of booked elements
   AtomicInt_t fNused;   ///< Number of used elements
   ArrayData_t fData;    ///< Data follows, has to be last
 
-private:
+  // private:
   friend Base_t;
 
   /** @brief Functions required by VariableSizeObjectInterface */

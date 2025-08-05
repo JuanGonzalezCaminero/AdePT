@@ -64,6 +64,8 @@ public:
   }
 
   __host__ __device__ void Clear();
+  __host__ __device__ void PartialClearStage1();
+  __host__ __device__ void PartialClearStage2();
 
   __device__ unsigned int NextSlot();
 
@@ -89,6 +91,38 @@ __host__ __device__ void SlotManager::Clear()
     fSlotCounter = 0;
     fFreeCounter = 0;
   }
+#endif
+}
+
+__host__ __device__ void SlotManager::PartialClearStage1()
+{
+#ifdef __CUDA_ARCH__
+  auto occupied = fSlotCounter - fFreeCounter;
+  for (unsigned int i = threadIdx.x + blockIdx.x * blockDim.x + occupied; i < fSlotCounter;
+       i += blockDim.x * gridDim.x) {
+    fSlotList[i] = i;
+  }
+#endif
+}
+__host__ __device__ void SlotManager::PartialClearStage2()
+{
+#ifdef __CUDA_ARCH__
+  if (threadIdx.x == 0) {
+    printf("FSLOTLIST:\n");
+    for (int i = 0; i < fSlotCounter - fFreeCounter + 10; i++) {
+      printf("%d, ", fSlotList[i]);
+    }
+    printf("\n");
+    printf("Previous slot counter %d\n", fSlotCounter);
+    printf("Previous free counter %d\n", fFreeCounter);
+    printf("Total occupied %d\n", fSlotCounter - fFreeCounter);
+
+    fSlotCounter -= fFreeCounter; // Compute number of occupied slots
+    fFreeCounter = 0;
+
+    printf("New slot counter %d\n", fSlotCounter);
+  }
+
 #endif
 }
 
@@ -132,6 +166,8 @@ __device__ void SlotManager::FreeMarkedSlotsStage1()
     COPCORE_EXCEPTION("Error: Trying to free too many slots.");
   }
 
+  // Move the slot counter back by fFreeCounter, and copy each free slot between that point and the
+  // current start of the slot list
   const auto begin = oldSlotCounter - fFreeCounter;
   for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < fFreeCounter; i += blockDim.x * gridDim.x) {
     const auto slotListIndex = begin + i;

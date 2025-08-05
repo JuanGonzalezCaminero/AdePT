@@ -339,6 +339,8 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
   if (blockIdx.x == 0) {
     // Clear queues and write statistics
     for (int i = threadIdx.x; i < ParticleType::NumParticleTypes; i += blockDim.x) {
+      printf("BEFORE CLEAR: Particle %d, initiallyActive: %ld, nextActive: %ld\n", i,
+             all.queues[i].initiallyActive->size(), all.queues[i].nextActive->size());
       all.queues[i].initiallyActive->clear();
 #ifdef USE_SPLIT_KERNELS
       all.queues[i].propagation->clear();
@@ -361,6 +363,8 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
       stats->slotFillLevel[i]          = tracksAndSlots.slotManagers[i]->FillLevel();
       stats->slotFillLevelLeaks[i]     = tracksAndSlots.slotManagersLeaks[i]->FillLevel();
       stats->slotFillLevelInjection[i] = tracksAndSlots.slotManagersInjection[i]->FillLevel();
+      printf("Particle %d, occupied: %d, in-flight: %ld\n", i, tracksAndSlots.slotManagers[i]->OccupiedSlots(),
+             all.queues[i].nextActive->size());
     }
     if (particlesInFlight > occupiedSlots) {
       printf("Error: %d in flight while %d slots allocated\n", particlesInFlight, occupiedSlots);
@@ -739,6 +743,17 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     gpuMalloc(leakStorage_dev, nLeakSlots);
 
     gpuState.particles[i].leaks = leakStorage_dev;
+    //////////////////////////
+    short *scanFlags_dev = nullptr;
+    int *scanResult_dev  = nullptr;
+    gpuMalloc(scanFlags_dev, nSlot);
+    gpuMalloc(scanResult_dev, nSlot);
+    gpuState.particles[i].scanFlags  = scanFlags_dev;
+    gpuState.particles[i].scanResult = scanResult_dev;
+
+    gpuState.particles[i].nItems = nSlot;
+    //////////////////////////
+
     // Experimental: Allocate space for the SoA storing the track info
     SoATrack *soaTrackStorage_dev = nullptr;
     gpuMalloc(soaTrackStorage_dev, 1);
@@ -1526,21 +1541,19 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
       if (gpuState.injectState != InjectState::CreatingSlots) {
         // NOTE: This is done before synchronizing with the stats copy. This means that the value we
         // see may not be up to date. This is acceptable in most situations
+        waitForOtherStream(gpuState.stream, hitTransferStream);
+        waitForOtherStream(gpuState.stream, injectStream);
+        waitForOtherStream(gpuState.stream, extractStream);
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           if (gpuState.stats->slotFillLevel[i] > 0.5) {
             // Freeing of slots has to run exclusively
             // FIXME: Revise this code and make sure all three streams actually need to be synchronized
             // with gpuState.stream
-            waitForOtherStream(gpuState.stream, hitTransferStream);
-            waitForOtherStream(gpuState.stream, injectStream);
-            waitForOtherStream(gpuState.stream, extractStream);
+
             static_assert(gpuState.nSlotManager_dev == ParticleType::NumParticleTypes,
                           "The below launches assume there is a slot manager per particle type.");
-            FreeSlots1<<<10, 256, 0, gpuState.stream>>>(gpuState.slotManager_dev + i);
+            FreeSlots1<<<1000, 32, 0, gpuState.stream>>>(gpuState.slotManager_dev + i);
             FreeSlots2<<<1, 1, 0, gpuState.stream>>>(gpuState.slotManager_dev + i);
-            waitForOtherStream(hitTransferStream, gpuState.stream);
-            waitForOtherStream(injectStream, gpuState.stream);
-            waitForOtherStream(extractStream, gpuState.stream);
           }
           if (gpuState.stats->slotFillLevelLeaks[i] > 0.5) {
             // Freeing of slots has to run exclusively
@@ -1573,6 +1586,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             waitForOtherStream(extractStream, gpuState.stream);
           }
         }
+        waitForOtherStream(hitTransferStream, gpuState.stream);
+        waitForOtherStream(injectStream, gpuState.stream);
+        waitForOtherStream(extractStream, gpuState.stream);
       }
 
       // *** Synchronise all but transfer stream with the end of this iteration ***
@@ -1605,6 +1621,15 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         }
         COPCORE_CUDA_CHECK(result);
         COPCORE_CUDA_CHECK(injectResult);
+
+        waitForOtherStream(gpuState.stream, hitTransferStream);
+        waitForOtherStream(gpuState.stream, injectStream);
+        waitForOtherStream(gpuState.stream, extractStream);
+        electrons.Defragment(gpuState.hepEmBuffers_d.electronsHepEm, gpuState.stream);
+        waitForOtherStream(hitTransferStream, gpuState.stream);
+        waitForOtherStream(injectStream, gpuState.stream);
+        waitForOtherStream(extractStream, gpuState.stream);
+        cudaDeviceSynchronize();
 
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           inFlight += gpuState.stats->inFlight[i];

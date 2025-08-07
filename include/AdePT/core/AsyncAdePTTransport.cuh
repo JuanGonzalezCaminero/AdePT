@@ -779,7 +779,7 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     gpuMallocExperimental(soaLeaksStorageArrays_dev, soaLeaksSize);
     // Finally, we need to instantiate the SoA on the allocated memory
     InitializeSoA<<<1, 1>>>(soaTrackStorageArrays_dev, soaTrackStorage_dev, nSlot);
-    InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nSlot);
+    InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nLeakSlots);
 
     gpuState.particles[i].soaTrack = soaTrackStorage_dev;
     gpuState.particles[i].soaLeaks = soaLeaksStorage_dev;
@@ -1418,9 +1418,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
           // This struct will hold the queues that need to be flushed
           allLeaked = {.leakedElectrons = {electrons.leaks, electrons.soaLeaks, electrons.queues.leakedTracksCurrent,
                                            electrons.slotManagerLeaks},
-                       .leakedPositrons = {positrons.leaks, electrons.soaLeaks, positrons.queues.leakedTracksCurrent,
+                       .leakedPositrons = {positrons.leaks, positrons.soaLeaks, positrons.queues.leakedTracksCurrent,
                                            positrons.slotManagerLeaks},
-                       .leakedGammas    = {gammas.leaks, electrons.soaLeaks, gammas.queues.leakedTracksCurrent,
+                       .leakedGammas    = {gammas.leaks, gammas.soaLeaks, gammas.queues.leakedTracksCurrent,
                                            gammas.slotManagerLeaks}};
 
           // Ensure that transport that's writing to the old queues finishes before collecting leaked tracks

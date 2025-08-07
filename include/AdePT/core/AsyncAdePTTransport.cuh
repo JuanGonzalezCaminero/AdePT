@@ -339,8 +339,8 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
   if (blockIdx.x == 0) {
     // Clear queues and write statistics
     for (int i = threadIdx.x; i < ParticleType::NumParticleTypes; i += blockDim.x) {
-      // printf("BEFORE CLEAR: Particle %d, initiallyActive: %ld, nextActive: %ld\n", i,
-      //        all.queues[i].initiallyActive->size(), all.queues[i].nextActive->size());
+      printf("BEFORE CLEAR: Particle %d, initiallyActive: %ld, nextActive: %ld\n", i,
+             all.queues[i].initiallyActive->size(), all.queues[i].nextActive->size());
       all.queues[i].initiallyActive->clear();
 #ifdef USE_SPLIT_KERNELS
       all.queues[i].propagation->clear();
@@ -919,6 +919,12 @@ void HitProcessingLoop(HitProcessingContext *const context, GPUstate &gpuState,
   }
 }
 
+__global__ void debugPrintKernel(int type, adept::MParray *nextActiveQueue)
+{
+  printf("Particle %d kernels finished\n", type);
+  printf("Particle %d Next active size: %ld\n", type, nextActiveQueue->size());
+}
+
 void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, int scoringCapacity, int numThreads,
                    TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates,
                    std::condition_variable &cvG4Workers, std::vector<AdePTScoring> &scoring, int adeptSeed,
@@ -1185,6 +1191,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries,
             electrons.queues.nextActive, electrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps,
             returnLastStep);
+        debugPrintKernel<<<1, 1, 0, electrons.stream>>>(0, electrons.queues.nextActive);
 #else
         TransportElectrons<PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
             electrons.tracks, electrons.leaks, electrons.queues.initiallyActive, secondaries,
@@ -1239,6 +1246,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
             positrons.queues.nextActive, positrons.queues.interactionQueues[3], gpuState.fScoring_dev, returnAllSteps,
             returnLastStep);
+        debugPrintKernel<<<1, 1, 0, positrons.stream>>>(1, positrons.queues.nextActive);
 #else
         TransportPositrons<PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
             positrons.tracks, positrons.leaks, positrons.queues.initiallyActive, secondaries,
@@ -1285,6 +1293,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         GammaPhotoelectric<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
             gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
             gammas.queues.interactionQueues[2], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
+        debugPrintKernel<<<1, 1, 0, gammas.stream>>>(2, gammas.queues.nextActive);
 #else
         TransportGammas<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
             gammas.tracks, gammas.leaks, gammas.queues.initiallyActive, secondaries, gammas.queues.nextActive,
@@ -1644,14 +1653,14 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         COPCORE_CUDA_CHECK(result);
         COPCORE_CUDA_CHECK(injectResult);
 
-        // waitForOtherStream(gpuState.stream, hitTransferStream);
-        // waitForOtherStream(gpuState.stream, injectStream);
-        // waitForOtherStream(gpuState.stream, extractStream);
-        // electrons.Defragment(gpuState.hepEmBuffers_d.electronsHepEm, gpuState.stream);
-        // waitForOtherStream(hitTransferStream, gpuState.stream);
-        // waitForOtherStream(injectStream, gpuState.stream);
-        // waitForOtherStream(extractStream, gpuState.stream);
-        // cudaDeviceSynchronize();
+        waitForOtherStream(gpuState.stream, hitTransferStream);
+        waitForOtherStream(gpuState.stream, injectStream);
+        waitForOtherStream(gpuState.stream, extractStream);
+        electrons.Defragment(gpuState.hepEmBuffers_d.electronsHepEm, gpuState.stream);
+        waitForOtherStream(hitTransferStream, gpuState.stream);
+        waitForOtherStream(injectStream, gpuState.stream);
+        waitForOtherStream(extractStream, gpuState.stream);
+        cudaDeviceSynchronize();
 
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           inFlight += gpuState.stats->inFlight[i];

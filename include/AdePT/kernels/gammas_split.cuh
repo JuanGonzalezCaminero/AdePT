@@ -21,9 +21,9 @@ using VolAuxData = adeptint::VolAuxData;
 
 namespace AsyncAdePT {
 
-__global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, G4HepEmGammaTrack *hepEMTracks,
-                            const adept::MParray *active, Secondaries secondaries, adept::MParray *propagationQueue,
-                            adept::MParray *leakedQueue, Stats *InFlightStats,
+__global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
+                            G4HepEmGammaTrack *hepEMTracks, const adept::MParray *active, Secondaries secondaries,
+                            adept::MParray *propagationQueue, adept::MParray *leakedQueue, Stats *InFlightStats,
                             AllowFinishOffEventArray allowFinishOffEvent)
 {
   constexpr unsigned short maxSteps        = 10'000;
@@ -34,7 +34,7 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, G4H
     auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    gammas[slot].currentSlot = slot;
+    // gammas[slot].currentSlot = slot;
 
     int lvolID                = currentTrack.navState.GetLogicalId();
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
@@ -62,8 +62,9 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, G4H
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot] = gammas[slot];
-        auto success    = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot]           = gammas[slot];
+        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
+        auto success              = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in gammas leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -165,10 +166,11 @@ __global__ void GammaPropagation(Track *gammas, SoATrack *soaTrack, G4HepEmGamma
 }
 
 template <typename Scoring>
-__global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track *leaks, G4HepEmGammaTrack *hepEMTracks,
-                                       const adept::MParray *active, Secondaries secondaries,
-                                       adept::MParray *nextActiveQueue, AllInteractionQueues interactionQueues,
-                                       adept::MParray *leakedQueue, Scoring *userScoring)
+__global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
+                                       G4HepEmGammaTrack *hepEMTracks, const adept::MParray *active,
+                                       Secondaries secondaries, adept::MParray *nextActiveQueue,
+                                       AllInteractionQueues interactionQueues, adept::MParray *leakedQueue,
+                                       Scoring *userScoring)
 {
   int activeSize = active->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
@@ -185,8 +187,9 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot] = gammas[slot];
-        auto success    = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot]           = gammas[slot];
+        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
+        auto success              = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in gammas leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -231,10 +234,11 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
 }
 
 template <typename Scoring>
-__global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks, G4HepEmGammaTrack *hepEMTracks,
-                                Secondaries secondaries, adept::MParray *nextActiveQueue,
-                                adept::MParray *relocatingQueue, adept::MParray *leakedQueue, Scoring *userScoring,
-                                const bool returnAllSteps, const bool returnLastStep)
+__global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
+                                G4HepEmGammaTrack *hepEMTracks, Secondaries secondaries,
+                                adept::MParray *nextActiveQueue, adept::MParray *relocatingQueue,
+                                adept::MParray *leakedQueue, Scoring *userScoring, const bool returnAllSteps,
+                                const bool returnLastStep)
 {
   constexpr Precision kPushDistance = 1000 * vecgeom::kTolerance;
   int activeSize                    = relocatingQueue->size();
@@ -252,8 +256,9 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot] = gammas[slot];
-        auto success    = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot]           = gammas[slot];
+        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
+        auto success              = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in gammas leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\

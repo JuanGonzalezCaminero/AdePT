@@ -92,7 +92,7 @@ struct Track {
   uint64_t trackId{0};  ///< track id (non-consecutive, reproducible)
   uint64_t parentId{0}; // track id of the parent
 
-  unsigned int currentSlot{0};
+  // unsigned int currentSlot{0};
 
   unsigned int eventId{0};
   short threadId{-1};

@@ -44,7 +44,7 @@ public:
   __host__ __device__ ParticleGenerator(Track *tracks, SoATrack *soaTracks, Track *injectedTracks,
                                         SlotManager *slotManager, SlotManager *slotManagerLeaks,
                                         SlotManager *slotManagerInjection, adept::MParray *activeQueue)
-      : fTracks(tracks), fInjectedTracks(injectedTracks), fSlotManager(slotManager),
+      : fTracks(tracks), fSoATracks(soaTracks), fInjectedTracks(injectedTracks), fSlotManager(slotManager),
         fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection), fActiveQueue(activeQueue)
   {
   }
@@ -82,8 +82,8 @@ public:
     // Initialize the values in the SoA storage
     fSoATracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
-    auto &track       = InitTrack(slot, std::forward<Ts>(args)...);
-    track.currentSlot = slot;
+    auto &track = InitTrack(slot, std::forward<Ts>(args)...);
+    // track.currentSlot = slot;
     return track;
   }
 
@@ -91,7 +91,8 @@ public:
 };
 
 struct LeakedTracks {
-  Track *fTracks;
+  Track *fLeaks;
+  SoATrack *fSoALeaks;
   adept::MParray *fLeakedQueue;
   SlotManager *fSlotManager;
 };
@@ -125,11 +126,14 @@ struct AllLeaked {
   LeakedTracks leakedGammas;
 };
 
-struct AllSoA {
-  SoATrack *electrons;
-  SoATrack *positrons;
-  SoATrack *gammas;
-};
+// struct AllSoA {
+//   SoATrack *electrons;
+//   SoATrack *positrons;
+//   SoATrack *gammas;
+//   SoATrack *electronsLeaks;
+//   SoATrack *positronsLeaks;
+//   SoATrack *gammasLeaks;
+// };
 
 // A bundle of queues per particle type:
 //  * Two for active particles, one for the current iteration and the second for the next.
@@ -240,6 +244,7 @@ struct ParticleType {
   SoATrack *soaTrack;
   Track *leaks;
   Track *injected;
+  SoATrack *soaLeaks;
   SlotManager *slotManager;
   SlotManager *slotManagerLeaks;
   SlotManager *slotManagerInjection;

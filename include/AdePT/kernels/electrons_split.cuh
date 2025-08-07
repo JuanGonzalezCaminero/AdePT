@@ -41,9 +41,10 @@ __device__ double GetVelocity(double eKin)
 namespace AsyncAdePT {
 
 template <bool IsElectron>
-__global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, G4HepEmElectronTrack *hepEMTracks,
-                               const adept::MParray *active, adept::MParray *nextActiveQueue,
-                               adept::MParray *propagationQueue, adept::MParray *leakedQueue, Stats *InFlightStats,
+__global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
+                               G4HepEmElectronTrack *hepEMTracks, const adept::MParray *active, Secondaries secondaries,
+                               adept::MParray *nextActiveQueue, adept::MParray *propagationQueue,
+                               adept::MParray *leakedQueue, Stats *InFlightStats,
                                AllowFinishOffEventArray allowFinishOffEvent)
 {
   constexpr unsigned short maxSteps        = 10'000;
@@ -65,10 +66,11 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, G4HepEmElec
 
   int activeSize = active->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot      = (*active)[i];
-    Track &currentTrack = electrons[slot];
+    const int slot           = (*active)[i];
+    Track &currentTrack      = electrons[slot];
+    SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager : *secondaries.positrons.fSlotManager;
 
-    electrons[slot].currentSlot = slot;
+    // electrons[slot].currentSlot = slot;
 
     // the MCC vector is indexed by the logical volume id
     const int lvolID = currentTrack.navState.GetLogicalId();
@@ -94,13 +96,24 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, G4HepEmElec
       // a trackdata struct would be better
       currentTrack.leakStatus = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
-        auto success = leakedQueue->push_back(slot);
+        // Get a slot in the leaks array
+        int leakSlot;
+        if (IsElectron)
+          leakSlot = secondaries.electrons.NextLeakSlot();
+        else
+          leakSlot = secondaries.positrons.NextLeakSlot();
+        // Copy the track to the leaks array and store the index in the leak queue
+        leaks[leakSlot]           = electrons[slot];
+        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
+        auto success              = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in e-/+ leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
 \tThe space allocated to the leak buffer may be too small\n");
           asm("trap;");
         }
+        // Free the slot in the tracks slot manager
+        slotManager.MarkSlotForFreeing(slot);
       } else {
         nextActiveQueue->push_back(slot);
       }
@@ -374,7 +387,7 @@ __global__ void ElectronMSC(Track *electrons, SoATrack *soaTrack, G4HepEmElectro
  * @brief Adds tracks to interaction and relocation queues depending on their state
  */
 template <bool IsElectron, typename Scoring>
-__global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, Track *leaks,
+__global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
                                           G4HepEmElectronTrack *hepEMTracks, const adept::MParray *active,
                                           Secondaries secondaries, adept::MParray *nextActiveQueue,
                                           AllInteractionQueues interactionQueues, adept::MParray *leakedQueue,
@@ -404,8 +417,9 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
         else
           leakSlot = secondaries.positrons.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot] = electrons[slot];
-        auto success    = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot]           = electrons[slot];
+        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
+        auto success              = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in e-/+ leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -543,7 +557,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
 }
 
 template <bool IsElectron, typename Scoring>
-__global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *leaks,
+__global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
                                    G4HepEmElectronTrack *hepEMTracks, Secondaries secondaries,
                                    adept::MParray *nextActiveQueue, adept::MParray *relocatingQueue,
                                    adept::MParray *leakedQueue, Scoring *userScoring, const bool returnAllSteps,
@@ -574,8 +588,9 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
         else
           leakSlot = secondaries.positrons.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot] = electrons[slot];
-        auto success    = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot]           = electrons[slot];
+        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
+        auto success              = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in e-/+ leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\

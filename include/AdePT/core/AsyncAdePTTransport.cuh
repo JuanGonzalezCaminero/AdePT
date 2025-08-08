@@ -979,8 +979,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
                         electrons.slotManagerInjection, electrons.queues.nextActive},
           .positrons = {positrons.tracks, positrons.injected, positrons.slotManager, positrons.slotManagerLeaks,
                         positrons.slotManagerInjection, positrons.queues.nextActive},
-          .gammas    = {gammas.tracks, gammas.injected, gammas.slotManager, gammas.slotManagerInjection,
-                        gammas.slotManagerLeaks, gammas.queues.nextActive},
+          .gammas    = {gammas.tracks, gammas.injected, gammas.slotManager, gammas.slotManagerLeaks,
+                        gammas.slotManagerInjection, gammas.queues.nextActive},
       };
       const AllParticleQueues allParticleQueues = {{electrons.queues, positrons.queues, gammas.queues}};
 #ifdef USE_SPLIT_KERNELS

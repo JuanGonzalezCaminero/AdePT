@@ -38,6 +38,7 @@ public:
   void SetTransportBufferThreshold(int threshold) { fTransportBufferThreshold = threshold; }
   void SetMillionsOfTrackSlots(double millionSlots) { fMillionsOfTrackSlots = millionSlots; }
   void SetMillionsOfLeakSlots(double millionSlots) { fMillionsOfLeakSlots = millionSlots; }
+  void SetMillionsOfInjectionSlots(double millionSlots) { fMillionsOfInjectionSlots = millionSlots; }
   void SetMillionsOfHitSlots(double millionSlots) { fMillionsOfHitSlots = millionSlots; }
   void SetHitBufferFlushThreshold(float threshold) { fHitBufferFlushThreshold = threshold; }
   void SetCPUCapacityFactor(float CPUCapacityFactor) { fCPUCapacityFactor = CPUCapacityFactor; }
@@ -78,6 +79,7 @@ public:
   float GetCPUCapacityFactor() { return fCPUCapacityFactor; }
   double GetMillionsOfTrackSlots() { return fMillionsOfTrackSlots; }
   double GetMillionsOfLeakSlots() { return fMillionsOfLeakSlots; }
+  double GetMillionsOfInjectionSlots() { return fMillionsOfInjectionSlots; }
   double GetMillionsOfHitSlots() { return fMillionsOfHitSlots; }
   std::vector<std::string> *GetGPURegionNames() { return &fGPURegionNames; }
   std::vector<std::string> *GetCPURegionNames() { return &fCPURegionNames; }
@@ -104,6 +106,7 @@ private:
   float fCPUCapacityFactor{2.5};
   double fMillionsOfTrackSlots{1};
   double fMillionsOfLeakSlots{1};
+  double fMillionsOfInjectionSlots{1};
   double fMillionsOfHitSlots{1};
   unsigned short fLastNParticlesOnCPU{0};
 

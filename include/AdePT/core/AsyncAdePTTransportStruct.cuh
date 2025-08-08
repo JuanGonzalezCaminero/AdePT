@@ -28,14 +28,18 @@ namespace AsyncAdePT {
 // A bundle of pointers to generate particles of an implicit type.
 struct ParticleGenerator {
   Track *fTracks;
+  Track *fInjectedTracks;
   SlotManager *fSlotManager;
   SlotManager *fSlotManagerLeaks;
+  SlotManager *fSlotManagerInjection;
   adept::MParray *fActiveQueue;
 
 public:
-  __host__ __device__ ParticleGenerator(Track *tracks, SlotManager *slotManager, SlotManager *slotManagerLeaks,
+  __host__ __device__ ParticleGenerator(Track *tracks, Track *injectedTracks, SlotManager *slotManager,
+                                        SlotManager *slotManagerLeaks, SlotManager *slotManagerInjection,
                                         adept::MParray *activeQueue)
-      : fTracks(tracks), fSlotManager(slotManager), fSlotManagerLeaks(slotManagerLeaks), fActiveQueue(activeQueue)
+      : fTracks(tracks), fInjectedTracks(injectedTracks), fSlotManager(slotManager),
+        fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection), fActiveQueue(activeQueue)
   {
   }
 
@@ -44,11 +48,20 @@ public:
 
   __device__ auto NextLeakSlot() { return fSlotManagerLeaks->NextSlot(); }
 
+  __device__ auto NextInjectSlot() { return fSlotManagerInjection->NextSlot(); }
+
   /// Construct a track at the given location, forwarding all arguments to the constructor.
   template <typename... Ts>
   __device__ Track &InitTrack(SlotManager::value_type slot, Ts &&...args)
   {
     return *new (fTracks + slot) Track{std::forward<Ts>(args)...};
+  }
+
+  /// Construct a track at the given location, forwarding all arguments to the constructor.
+  template <typename... Ts>
+  __device__ Track &InitInjectedTrack(SlotManager::value_type slot, Ts &&...args)
+  {
+    return *new (fInjectedTracks + slot) Track{std::forward<Ts>(args)...};
   }
 
   /// Obtain a slot and construct a track, forwarding args to the track constructor.
@@ -149,8 +162,10 @@ dynamic allocations
 struct ParticleType {
   Track *tracks;
   Track *leaks;
+  Track *injected;
   SlotManager *slotManager;
   SlotManager *slotManagerLeaks;
+  SlotManager *slotManagerInjection;
   ParticleQueues queues;
   cudaStream_t stream;
   cudaEvent_t event;
@@ -182,8 +197,10 @@ struct AllInteractionQueues {
 struct TracksAndSlots {
   Track *const tracks[ParticleType::NumParticleTypes];
   Track *const leaks[ParticleType::NumParticleTypes];
+  Track *const injected[ParticleType::NumParticleTypes];
   SlotManager *const slotManagers[ParticleType::NumParticleTypes];
   SlotManager *const slotManagersLeaks[ParticleType::NumParticleTypes];
+  SlotManager *const slotManagersInjection[ParticleType::NumParticleTypes];
 };
 
 // A bundle of queues for the three particle types.
@@ -194,6 +211,7 @@ struct AllParticleQueues {
 struct AllSlotManagers {
   SlotManager slotManagers[ParticleType::NumParticleTypes];
   SlotManager slotManagersLeaks[ParticleType::NumParticleTypes];
+  SlotManager slotManagersInjection[ParticleType::NumParticleTypes];
 };
 
 // A data structure to transfer statistics after each iteration.
@@ -203,6 +221,7 @@ struct Stats {
   float queueFillLevel[ParticleType::NumParticleTypes];
   float slotFillLevel[ParticleType::NumParticleTypes];
   float slotFillLevelLeaks[ParticleType::NumParticleTypes];
+  float slotFillLevelInjection[ParticleType::NumParticleTypes];
   unsigned int perEventInFlight[kMaxThreads];         // Updated asynchronously
   unsigned int perEventInFlightPrevious[kMaxThreads]; // Used in transport kernels
   unsigned int perEventLeaked[kMaxThreads];
@@ -233,9 +252,10 @@ struct GPUstate {
 
   static constexpr unsigned int nSlotManager_dev = 3;
 
-  AllSlotManagers allmgr_h;                   // All host slot managers, statically allocated
-  SlotManager *slotManager_dev{nullptr};      // All device slot managers
-  SlotManager *slotManagerLeaks_dev{nullptr}; // All device leak slot managers
+  AllSlotManagers allmgr_h;                       // All host slot managers, statically allocated
+  SlotManager *slotManager_dev{nullptr};          // All device slot managers
+  SlotManager *slotManagerLeaks_dev{nullptr};     // All device leak slot managers
+  SlotManager *slotManagerInjection_dev{nullptr}; // All device injection slot managers
 
 #ifdef USE_SPLIT_KERNELS
   HepEmBuffers hepEmBuffers_d; // All device buffers of hepem tracks

@@ -194,12 +194,12 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     assert(generator != nullptr && "Unsupported pdg type");
 
     // TODO: Delay when not enough slots?
-    const auto slot = generator->NextSlot();
+    const auto slot = generator->NextInjectSlot();
     // we need to scramble the initial seed with some more trackinfo to generate a unique seed.
     // otherwise, if a particle returns from the device and is injected again (i.e., via lepton nuclear), it would have
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
-    Track &track = generator->InitTrack(
+    Track &track = generator->InitInjectedTrack(
         slot, seed, trackInfo.eKin, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
         static_cast<float>(trackInfo.properTime), trackInfo.weight, trackInfo.position, trackInfo.direction,
         trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
@@ -210,12 +210,19 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
   }
 }
 
-__global__ void EnqueueTracks(AllParticleQueues allQueues, adept::MParrayT<QueueIndexPair> *toBeEnqueued)
+__global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracksAndSlots,
+                              adept::MParrayT<QueueIndexPair> *toBeEnqueued)
 {
   const auto end = toBeEnqueued->size();
   for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
-    const auto [slotNumber, particleType] = (*toBeEnqueued)[i];
-    allQueues.queues[particleType].nextActive->push_back(slotNumber);
+    const auto [injectionSlot, particleType] = (*toBeEnqueued)[i];
+    // Get a slot in the track buffer
+    const auto slot = tracksAndSlots.slotManagers[particleType]->NextSlot();
+    // Copy the injected track to the track buffer
+    tracksAndSlots.tracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
+    // Add the slot to the next active queue
+    allQueues.queues[particleType].nextActive->push_back(slot);
+    tracksAndSlots.slotManagersInjection[particleType]->MarkSlotForFreeing(injectionSlot);
   }
 
   __syncthreads();
@@ -338,8 +345,9 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
     for (int i = 0; i < ParticleType::NumParticleTypes; ++i) {
       particlesInFlight += all.queues[i].nextActive->size();
       occupiedSlots += tracksAndSlots.slotManagers[i]->OccupiedSlots();
-      stats->slotFillLevel[i]      = tracksAndSlots.slotManagers[i]->FillLevel();
-      stats->slotFillLevelLeaks[i] = tracksAndSlots.slotManagersLeaks[i]->FillLevel();
+      stats->slotFillLevel[i]          = tracksAndSlots.slotManagers[i]->FillLevel();
+      stats->slotFillLevelLeaks[i]     = tracksAndSlots.slotManagersLeaks[i]->FillLevel();
+      stats->slotFillLevelInjection[i] = tracksAndSlots.slotManagersInjection[i]->FillLevel();
     }
     if (particlesInFlight > occupiedSlots) {
       printf("Error: %d in flight while %d slots allocated\n", particlesInFlight, occupiedSlots);
@@ -592,8 +600,8 @@ void FlushScoring(AdePTScoring &scoring)
 /// If successful, this will initialise the member fGPUState.
 /// If memory allocation fails, an exception is thrown. In this case, the caller has to
 /// try again after some wait time or with less transport slots.
-std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int leakCapacity, int scoringCapacity,
-                                                         int numThreads, TrackBuffer &trackBuffer,
+std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int leakCapacity, int injectionCapacity,
+                                                         int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
                                                          std::vector<AdePTScoring> &scoring, double CPUCapacityFactor,
                                                          double CPUCopyFraction)
 {
@@ -634,30 +642,39 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
   gpuMalloc(gpuState.slotManager_dev, gpuState.nSlotManager_dev);
   gpuState.slotManagerLeaks_dev = nullptr;
   gpuMalloc(gpuState.slotManagerLeaks_dev, gpuState.nSlotManager_dev);
+  gpuState.slotManagerInjection_dev = nullptr;
+  gpuMalloc(gpuState.slotManagerInjection_dev, gpuState.nSlotManager_dev);
   for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
     // Number of slots allocated computed based on the proportions set in ParticleType::relativeQueueSize
-    const size_t nSlot              = trackCapacity * ParticleType::relativeQueueSize[i];
-    const size_t sizeOfQueueStorage = adept::MParray::SizeOfInstance(nSlot);
-    const size_t nLeakSlots         = leakCapacity;
-    const size_t sizeOfLeakQueue    = adept::MParray::SizeOfInstance(nLeakSlots);
+    const size_t nSlot                = trackCapacity * ParticleType::relativeQueueSize[i];
+    const size_t sizeOfQueueStorage   = adept::MParray::SizeOfInstance(nSlot);
+    const size_t nLeakSlots           = leakCapacity;
+    const size_t sizeOfLeakQueue      = adept::MParray::SizeOfInstance(nLeakSlots);
+    const size_t nInjectionSlots      = leakCapacity;
+    const size_t sizeOfInjectionQueue = adept::MParray::SizeOfInstance(nInjectionSlots);
 
     // Initialize all host slot managers (This call allocates GPU memory)
     gpuState.allmgr_h.slotManagers[i] =
         SlotManager{static_cast<SlotManager::value_type>(nSlot), static_cast<SlotManager::value_type>(nSlot)};
     gpuState.allmgr_h.slotManagersLeaks[i] =
         SlotManager{static_cast<SlotManager::value_type>(nLeakSlots), static_cast<SlotManager::value_type>(nLeakSlots)};
+    gpuState.allmgr_h.slotManagersInjection[i] = SlotManager{static_cast<SlotManager::value_type>(nInjectionSlots),
+                                                             static_cast<SlotManager::value_type>(nInjectionSlots)};
     // Initialize dev slotmanagers by copying the host data
     COPCORE_CUDA_CHECK(cudaMemcpy(&gpuState.slotManager_dev[i], &gpuState.allmgr_h.slotManagers[i], sizeof(SlotManager),
                                   cudaMemcpyDefault));
     COPCORE_CUDA_CHECK(cudaMemcpy(&gpuState.slotManagerLeaks_dev[i], &gpuState.allmgr_h.slotManagersLeaks[i],
                                   sizeof(SlotManager), cudaMemcpyDefault));
+    COPCORE_CUDA_CHECK(cudaMemcpy(&gpuState.slotManagerInjection_dev[i], &gpuState.allmgr_h.slotManagersInjection[i],
+                                  sizeof(SlotManager), cudaMemcpyDefault));
 
     // Allocate the queues where the active and leak indices are stored
     // * Current and next active track indices
     // * Current and next leaked track indices
-    ParticleType &particleType    = gpuState.particles[i];
-    particleType.slotManager      = &gpuState.slotManager_dev[i];
-    particleType.slotManagerLeaks = &gpuState.slotManagerLeaks_dev[i];
+    ParticleType &particleType        = gpuState.particles[i];
+    particleType.slotManager          = &gpuState.slotManager_dev[i];
+    particleType.slotManagerLeaks     = &gpuState.slotManagerLeaks_dev[i];
+    particleType.slotManagerInjection = &gpuState.slotManagerInjection_dev[i];
 
     void *gpuPtr = nullptr;
     gpuMalloc(gpuPtr, sizeOfQueueStorage);
@@ -693,6 +710,12 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     gpuMalloc(leakStorage_dev, nLeakSlots);
 
     gpuState.particles[i].leaks = leakStorage_dev;
+
+    // Allocate space for injecting tracks
+    Track *injectionStorage_dev = nullptr;
+    gpuMalloc(injectionStorage_dev, nInjectionSlots);
+
+    gpuState.particles[i].injected = injectionStorage_dev;
 
     printf("%lu track slots allocated for particle type %d on GPU (%.2lf%% of %d total slots allocated)\n", nSlot, i,
            ParticleType::relativeQueueSize[i] * 100, trackCapacity);
@@ -823,8 +846,8 @@ void HitProcessingLoop(HitProcessingContext *const context, GPUstate &gpuState,
   }
 }
 
-void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int numThreads, TrackBuffer &trackBuffer,
-                   GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates,
+void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, int scoringCapacity, int numThreads,
+                   TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates,
                    std::condition_variable &cvG4Workers, std::vector<AdePTScoring> &scoring, int adeptSeed,
                    int debugLevel, bool returnAllSteps, bool returnLastStep, unsigned short lastNParticlesOnCPU)
 {
@@ -899,6 +922,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
     // NVTXTracer nvtx1{"Setup"}, nvtx2{"Setup2"};
     InitSlotManagers<<<80, 256, 0, gpuState.stream>>>(gpuState.slotManager_dev, gpuState.nSlotManager_dev);
     InitSlotManagers<<<80, 256, 0, gpuState.stream>>>(gpuState.slotManagerLeaks_dev, gpuState.nSlotManager_dev);
+    InitSlotManagers<<<80, 256, 0, gpuState.stream>>>(gpuState.slotManagerInjection_dev, gpuState.nSlotManager_dev);
     COPCORE_CUDA_CHECK(cudaMemsetAsync(gpuState.stats_dev, 0, sizeof(Stats), gpuState.stream));
 
     int inFlight                                                   = 0;
@@ -951,11 +975,12 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
       gammas.queues.SwapActive();
 
       const Secondaries secondaries = {
-          .electrons = {electrons.tracks, electrons.slotManager, electrons.slotManagerLeaks,
-                        electrons.queues.nextActive},
-          .positrons = {positrons.tracks, positrons.slotManager, positrons.slotManagerLeaks,
-                        positrons.queues.nextActive},
-          .gammas    = {gammas.tracks, gammas.slotManager, gammas.slotManagerLeaks, gammas.queues.nextActive},
+          .electrons = {electrons.tracks, electrons.injected, electrons.slotManager, electrons.slotManagerLeaks,
+                        electrons.slotManagerInjection, electrons.queues.nextActive},
+          .positrons = {positrons.tracks, positrons.injected, positrons.slotManager, positrons.slotManagerLeaks,
+                        positrons.slotManagerInjection, positrons.queues.nextActive},
+          .gammas    = {gammas.tracks, gammas.injected, gammas.slotManager, gammas.slotManagerInjection,
+                        gammas.slotManagerLeaks, gammas.queues.nextActive},
       };
       const AllParticleQueues allParticleQueues = {{electrons.queues, positrons.queues, gammas.queues}};
 #ifdef USE_SPLIT_KERNELS
@@ -973,8 +998,10 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
       const TracksAndSlots tracksAndSlots = {
           {electrons.tracks, positrons.tracks, gammas.tracks},
           {electrons.leaks, positrons.leaks, gammas.leaks},
+          {electrons.injected, positrons.injected, gammas.injected},
           {electrons.slotManager, positrons.slotManager, gammas.slotManager},
-          {electrons.slotManagerLeaks, positrons.slotManagerLeaks, gammas.slotManagerLeaks}};
+          {electrons.slotManagerLeaks, positrons.slotManagerLeaks, gammas.slotManagerLeaks},
+          {electrons.slotManagerInjection, positrons.slotManagerInjection, gammas.slotManagerInjection}};
       // --------------------------
       // *** Particle injection ***
       // --------------------------
@@ -1025,7 +1052,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
       // *** Enqueue particles that are ready on the device ***
       if (gpuState.injectState == InjectState::ReadyToEnqueue) {
         gpuState.injectState = InjectState::Enqueueing;
-        EnqueueTracks<<<1, 256, 0, gpuState.stream>>>(allParticleQueues, gpuState.injectionQueue);
+        EnqueueTracks<<<1, 256, 0, gpuState.stream>>>(allParticleQueues, tracksAndSlots, gpuState.injectionQueue);
         // New injection has to wait until particles are enqueued:
         waitForOtherStream(injectStream, gpuState.stream);
       } else if (gpuState.injectState == InjectState::Enqueueing) {
@@ -1477,6 +1504,21 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
             waitForOtherStream(injectStream, gpuState.stream);
             waitForOtherStream(extractStream, gpuState.stream);
           }
+          if (gpuState.stats->slotFillLevelInjection[i] > 0.5) {
+            // Freeing of slots has to run exclusively
+            // FIXME: Revise this code and make sure all three streams actually need to be synchronized
+            // with gpuState.stream
+            waitForOtherStream(gpuState.stream, hitTransferStream);
+            waitForOtherStream(gpuState.stream, injectStream);
+            waitForOtherStream(gpuState.stream, extractStream);
+            static_assert(gpuState.nSlotManager_dev == ParticleType::NumParticleTypes,
+                          "The below launches assume there is a slot manager per particle type.");
+            FreeSlots1<<<10, 256, 0, gpuState.stream>>>(gpuState.slotManagerInjection_dev + i);
+            FreeSlots2<<<1, 1, 0, gpuState.stream>>>(gpuState.slotManagerInjection_dev + i);
+            waitForOtherStream(hitTransferStream, gpuState.stream);
+            waitForOtherStream(injectStream, gpuState.stream);
+            waitForOtherStream(extractStream, gpuState.stream);
+          }
         }
       }
 
@@ -1691,8 +1733,8 @@ void CloseGPUBuffer(unsigned int threadId, GPUstate &gpuState, GPUHit *begin, co
 
 // TODO: Make it clear that this will initialize and return the GPUState or make a
 // separate init function that will compile here and be called from the .icc
-std::thread LaunchGPUWorker(int trackCapacity, int leakCapacity, int scoringCapacity, int numThreads,
-                            TrackBuffer &trackBuffer, GPUstate &gpuState,
+std::thread LaunchGPUWorker(int trackCapacity, int leakCapacity, int injectionCapacity, int scoringCapacity,
+                            int numThreads, TrackBuffer &trackBuffer, GPUstate &gpuState,
                             std::vector<std::atomic<EventState>> &eventStates, std::condition_variable &cvG4Workers,
                             std::vector<AdePTScoring> &scoring, int adeptSeed, int debugLevel, bool returnAllSteps,
                             bool returnLastStep, unsigned short lastNParticlesOnCPU)
@@ -1700,6 +1742,7 @@ std::thread LaunchGPUWorker(int trackCapacity, int leakCapacity, int scoringCapa
   return std::thread{&TransportLoop,
                      trackCapacity,
                      leakCapacity,
+                     injectionCapacity,
                      scoringCapacity,
                      numThreads,
                      std::ref(trackBuffer),

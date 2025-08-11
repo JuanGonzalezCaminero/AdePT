@@ -33,8 +33,9 @@ namespace AsyncAdePT {
 // A bundle of pointers to generate particles of an implicit type.
 struct ParticleGenerator {
   Track *fTracks;
-  Track *fInjectedTracks;
   SoATrack *fSoATracks;
+  Track *fInjectedTracks;
+  SoATrack *fSoAInjected;
   SlotManager *fSlotManager;
   SlotManager *fSlotManagerLeaks;
   SlotManager *fSlotManagerInjection;
@@ -42,10 +43,11 @@ struct ParticleGenerator {
 
 public:
   __host__ __device__ ParticleGenerator(Track *tracks, SoATrack *soaTracks, Track *injectedTracks,
-                                        SlotManager *slotManager, SlotManager *slotManagerLeaks,
+                                        SoATrack *soaInjected, SlotManager *slotManager, SlotManager *slotManagerLeaks,
                                         SlotManager *slotManagerInjection, adept::MParray *activeQueue)
-      : fTracks(tracks), fSoATracks(soaTracks), fInjectedTracks(injectedTracks), fSlotManager(slotManager),
-        fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection), fActiveQueue(activeQueue)
+      : fTracks(tracks), fSoATracks(soaTracks), fInjectedTracks(injectedTracks), fSoAInjected(soaInjected),
+        fSlotManager(slotManager), fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection),
+        fActiveQueue(activeQueue)
   {
   }
 
@@ -70,6 +72,9 @@ public:
   template <typename... Ts>
   __device__ Track &InitInjectedTrack(SlotManager::value_type slot, Ts &&...args)
   {
+    // Initialize the values in the SoA storage
+    fSoAInjected->InitTrack(slot, std::forward<Ts>(args)...);
+    // Init the main track
     return *new (fInjectedTracks + slot) Track{std::forward<Ts>(args)...};
   }
 
@@ -125,15 +130,6 @@ struct AllLeaked {
   LeakedTracks leakedPositrons;
   LeakedTracks leakedGammas;
 };
-
-// struct AllSoA {
-//   SoATrack *electrons;
-//   SoATrack *positrons;
-//   SoATrack *gammas;
-//   SoATrack *electronsLeaks;
-//   SoATrack *positronsLeaks;
-//   SoATrack *gammasLeaks;
-// };
 
 // A bundle of queues per particle type:
 //  * Two for active particles, one for the current iteration and the second for the next.
@@ -243,8 +239,9 @@ struct ParticleType {
   Track *tracks;
   SoATrack *soaTrack;
   Track *leaks;
-  Track *injected;
   SoATrack *soaLeaks;
+  Track *injected;
+  SoATrack *soaInjected;
   SlotManager *slotManager;
   SlotManager *slotManagerLeaks;
   SlotManager *slotManagerInjection;
@@ -316,8 +313,10 @@ struct AllInteractionQueues {
 // Pointers to track storage for each particle type
 struct TracksAndSlots {
   Track *const tracks[ParticleType::NumParticleTypes];
+  SoATrack *const soaTracks[ParticleType::NumParticleTypes];
   Track *const leaks[ParticleType::NumParticleTypes];
   Track *const injected[ParticleType::NumParticleTypes];
+  SoATrack *const soaInjected[ParticleType::NumParticleTypes];
   SlotManager *const slotManagers[ParticleType::NumParticleTypes];
   SlotManager *const slotManagersLeaks[ParticleType::NumParticleTypes];
   SlotManager *const slotManagersInjection[ParticleType::NumParticleTypes];

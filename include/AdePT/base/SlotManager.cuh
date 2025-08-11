@@ -108,19 +108,19 @@ __host__ __device__ void SlotManager::PartialClearStage2()
 {
 #ifdef __CUDA_ARCH__
   if (threadIdx.x == 0) {
-    printf("FSLOTLIST:\n");
-    for (int i = 0; i < fSlotCounter - fFreeCounter + 10; i++) {
-      printf("%d, ", fSlotList[i]);
-    }
-    printf("\n");
-    printf("Previous slot counter %d\n", fSlotCounter);
-    printf("Previous free counter %d\n", fFreeCounter);
-    printf("Total occupied %d\n", fSlotCounter - fFreeCounter);
+    // printf("FSLOTLIST:\n");
+    // for (int i = 0; i < fSlotCounter - fFreeCounter + 10; i++) {
+    //   printf("%d, ", fSlotList[i]);
+    // }
+    // printf("\n");
+    // printf("Previous slot counter %d\n", fSlotCounter);
+    // printf("Previous free counter %d\n", fFreeCounter);
+    // printf("Total occupied %d\n", fSlotCounter - fFreeCounter);
 
     fSlotCounter -= fFreeCounter; // Compute number of occupied slots
     fFreeCounter = 0;
 
-    printf("New slot counter %d\n", fSlotCounter);
+    // printf("New slot counter %d\n", fSlotCounter);
   }
 
 #endif

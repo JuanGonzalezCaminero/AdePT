@@ -191,34 +191,42 @@ __global__ void MarkOccupiedSlots(adept::MParray *activeQueue, short *scanFlags)
   }
 }
 
-__global__ void CompactCopy(unsigned int nItems, Track *tracks, SoATrack *soaTrack, short *scanFlags, int *scanResult,
-                            G4HepEmElectronTrack *electronsHepEm)
+__global__ void CompactCopy(unsigned int nItems, Track *tracks, SoATrack *soaTrack, short *scanFlags, int *scanResult/*,
+                            G4HepEmElectronTrack *electronsHepEm*/)
 {
+  // Track tracksShared[256];
+  // double ekinShared[256];
   // Note: would be more efficient to compute the max occupied index and use it to limit the for loop
   for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nItems; i += blockDim.x) {
     // If the slot is occupied, the scan result indicates the destination
     auto dest = scanResult[i];
     if (scanFlags[i] && dest != i) {
+      // tracksShared[threadIdx.x] = tracks[i];
+      // __syncthreads();
+      // tracks[dest]            = tracksShared[threadIdx.x];
+      // ekinShared[threadIdx.x] = soaTrack->fEkin[i];
+      // __syncthreads();
+      // soaTrack->fEkin[dest] = ekinShared[threadIdx.x];
       // Copy AdePT Tracks
       tracks[dest] = tracks[i];
       // Copy AdePT SoA Tracks
       soaTrack->fEkin[dest] = soaTrack->fEkin[i];
       // Copy G4HepEm tracks
-      electronsHepEm[dest] = electronsHepEm[i];
+      // electronsHepEm[dest] = electronsHepEm[i];
     }
   }
 }
 
 __global__ void UpdateActiveIdx(adept::MParray *activeQueue, SlotManager *slotManager)
 {
-  if (threadIdx.x == 0 && blockIdx.x == 0) {
-    printf("Nused before %ld\n", activeQueue->size());
+  // if (threadIdx.x == 0 && blockIdx.x == 0) {
+  // printf("Nused before %ld\n", activeQueue->size());
 
-    activeQueue->fNbooked.store(0);
-    activeQueue->fNused.store(slotManager->fSlotCounter);
+  // activeQueue->fNbooked.store(0);
+  // activeQueue->fNused.store(slotManager->fSlotCounter);
 
-    printf("Nused updated %ld\n", activeQueue->size());
-  }
+  // printf("Nused updated %ld\n", activeQueue->size());
+  // }
   for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < slotManager->fSlotCounter; i += blockDim.x) {
     activeQueue->fData[i] = i;
   }
@@ -261,7 +269,7 @@ struct ParticleType {
   };
   static constexpr double relativeQueueSize[] = {0.35, 0.15, 0.5};
 
-  void Defragment(/*unsigned int nItems, short *scanFlags, int *scanResult*/ G4HepEmElectronTrack *electronsHepEm,
+  void Defragment(/*unsigned int nItems, short *scanFlags, int *scanResult*/ /*G4HepEmElectronTrack *electronsHepEm,*/
                   cudaStream_t stream)
   {
     // Initialize flags
@@ -284,10 +292,10 @@ struct ParticleType {
     // - Tracks
     // - SoA elements
     // - HepEmTracks
-    CompactCopy<<<1, 32, 0, stream>>>(nItems, tracks, soaTrack, scanFlags, scanResult, electronsHepEm);
+    CompactCopy<<<1, 32, 0, stream>>>(nItems, tracks, soaTrack, scanFlags, scanResult /*, electronsHepEm*/);
 
     // Reset slot manager:
-    // - Set fSlotList[fSlotCounter:] to fSlotCounter..nItems
+    // - Set fSlotList[fSlotCounter:] to fSlotCounter.nItems
     // - Set fFreeCounter to 0 (We should not need to reinitialize the actual free slots list)
     ClearSlotManagerStage1<<<1000, 32, 0, stream>>>(slotManager);
     ClearSlotManagerStage2<<<1, 1, 0, stream>>>(slotManager);

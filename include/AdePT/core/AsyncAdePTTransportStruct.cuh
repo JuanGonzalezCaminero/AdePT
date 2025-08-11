@@ -191,29 +191,20 @@ __global__ void MarkOccupiedSlots(adept::MParray *activeQueue, short *scanFlags)
   }
 }
 
-__global__ void CompactCopy(unsigned int nItems, Track *tracks, SoATrack *soaTrack, short *scanFlags, int *scanResult/*,
-                            G4HepEmElectronTrack *electronsHepEm*/)
+__global__ void CompactCopy(unsigned int nItems, Track *trackSrc, Track *trackDst, SoATrack *soaTrackSrc,
+                            SoATrack *soaTrackDst, adept::MParray *activeQueue
+                            /*, short *scanFlags, int *scanResult, G4HepEmElectronTrack *electronsHepEm*/)
 {
-  // Track tracksShared[256];
-  // double ekinShared[256];
+  auto nUsed = activeQueue->size();
   // Note: would be more efficient to compute the max occupied index and use it to limit the for loop
-  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nItems; i += blockDim.x) {
-    // If the slot is occupied, the scan result indicates the destination
-    auto dest = scanResult[i];
-    if (scanFlags[i] && dest != i) {
-      // tracksShared[threadIdx.x] = tracks[i];
-      // __syncthreads();
-      // tracks[dest]            = tracksShared[threadIdx.x];
-      // ekinShared[threadIdx.x] = soaTrack->fEkin[i];
-      // __syncthreads();
-      // soaTrack->fEkin[dest] = ekinShared[threadIdx.x];
-      // Copy AdePT Tracks
-      tracks[dest] = tracks[i];
-      // Copy AdePT SoA Tracks
-      soaTrack->fEkin[dest] = soaTrack->fEkin[i];
-      // Copy G4HepEm tracks
-      // electronsHepEm[dest] = electronsHepEm[i];
-    }
+  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nUsed; i += blockDim.x) {
+    auto src = (*activeQueue)[i];
+    // Copy AdePT Tracks
+    trackDst[i] = trackSrc[src];
+    // Copy AdePT SoA Tracks
+    soaTrackDst->fEkin[i] = soaTrackSrc->fEkin[src];
+    // Copy G4HepEm tracks
+    // electronsHepEm[i] = electronsHepEm[src];
   }
 }
 
@@ -245,7 +236,9 @@ __global__ void ClearSlotManagerStage2(SlotManager *slotManager)
 // Holds all information needed to manage in-flight tracks of one type
 struct ParticleType {
   Track *tracks;
+  Track *nextTracks;
   SoATrack *soaTrack;
+  SoATrack *soaNextTrack;
   Track *leaks;
   SoATrack *soaLeaks;
   Track *injected;
@@ -269,30 +262,39 @@ struct ParticleType {
   };
   static constexpr double relativeQueueSize[] = {0.35, 0.15, 0.5};
 
+  void SwapActiveTracks()
+  {
+    std::swap(tracks, nextTracks);
+    std::swap(soaTrack, soaNextTrack);
+  }
+
   void Defragment(/*unsigned int nItems, short *scanFlags, int *scanResult*/ /*G4HepEmElectronTrack *electronsHepEm,*/
-                  cudaStream_t stream)
+                  Track *trackSrc, Track *trackDst, SoATrack *soaTrackSrc, SoATrack *soaTrackDst, cudaStream_t stream)
   {
     // Initialize flags
     // cudaMemset(scanFlags, 0, nItems * sizeof(short));
-    ClearOccupiedFlags<<<100, 256, 0, stream>>>(nItems, scanFlags);
+    // ClearOccupiedFlags<<<100, 256, 0, stream>>>(nItems, scanFlags);
 
     // Mark used slots
-    MarkOccupiedSlots<<<100, 256, 0, stream>>>(queues.nextActive, scanFlags);
+    // MarkOccupiedSlots<<<100, 256, 0, stream>>>(queues.nextActive, scanFlags);
 
     // Do the scan
     // thrust::device_ptr<short> flags_thrust(scanFlags);
     // thrust::device_ptr<int> scan_thrust(scanResult);
     // thrust::exclusive_scan(scanFlags, scanFlags + nItems, scanResult);
 
-    thrust::device_ptr<short> flags_thrust(scanFlags);
-    thrust::device_ptr<int> scan_thrust(scanResult);
-    thrust::exclusive_scan(thrust::cuda::par.on(stream), flags_thrust, flags_thrust + nItems, scan_thrust, 0);
+    // thrust::device_ptr<short> flags_thrust(scanFlags);
+    // thrust::device_ptr<int> scan_thrust(scanResult);
+    // thrust::exclusive_scan(thrust::cuda::par.on(stream), flags_thrust, flags_thrust + nItems, scan_thrust, 0);
+
+    // queues.nextActive->sort(stream);
 
     // Copy each item into to its destination:
     // - Tracks
     // - SoA elements
     // - HepEmTracks
-    CompactCopy<<<1, 32, 0, stream>>>(nItems, tracks, soaTrack, scanFlags, scanResult /*, electronsHepEm*/);
+    CompactCopy<<<100, 256, 0, stream>>>(nItems, trackSrc, trackDst, soaTrackSrc, soaTrackDst, queues.nextActive
+                                         /*, scanFlags, scanResult, electronsHepEm*/);
 
     // Reset slot manager:
     // - Set fSlotList[fSlotCounter:] to fSlotCounter.nItems

@@ -740,6 +740,12 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
 
     gpuState.particles[i].tracks = trackStorage_dev;
 
+    // Second track buffer
+    Track *trackStorageNext_dev = nullptr;
+    gpuMalloc(trackStorageNext_dev, nSlot);
+
+    gpuState.particles[i].nextTracks = trackStorageNext_dev;
+
     // ALlocate space for the leaks
     Track *leakStorage_dev = nullptr;
     gpuMalloc(leakStorage_dev, nLeakSlots);
@@ -767,42 +773,55 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
 
     // Experimental: Allocate space for the SoA storing the track info
     SoATrack *soaTrackStorage_dev = nullptr;
-    gpuMalloc(soaTrackStorage_dev, 1);
 
     // Device pointer to the SoA itself
     gpuMalloc(soaTrackStorage_dev, 1);
 
+    // Second track SoA
+    SoATrack *soaNextTrackStorage_dev = nullptr;
+
+    // Device pointer to the SoA itself
+    gpuMalloc(soaNextTrackStorage_dev, 1);
+
     // Allocate space for the SoA storing the leaks info
     SoATrack *soaLeaksStorage_dev = nullptr;
-    gpuMalloc(soaLeaksStorage_dev, 1);
 
     // Device pointer to the SoA itself
     gpuMalloc(soaLeaksStorage_dev, 1);
 
     // Allocate space for the SoA storing the injected particles info
     SoATrack *soaInjectedStorage_dev = nullptr;
-    gpuMalloc(soaInjectedStorage_dev, 1);
 
     // Device pointer to the SoA itself
     gpuMalloc(soaInjectedStorage_dev, 1);
 
     // Now we need to allocate space for the actual arrays
-    SoATrack *soaTrackStorageArrays_dev    = nullptr;
-    SoATrack *soaLeaksStorageArrays_dev    = nullptr;
-    SoATrack *soaInjectedStorageArrays_dev = nullptr;
+    SoATrack *soaTrackStorageArrays_dev     = nullptr;
+    SoATrack *soaNextTrackStorageArrays_dev = nullptr;
+    SoATrack *soaLeaksStorageArrays_dev     = nullptr;
+    SoATrack *soaInjectedStorageArrays_dev  = nullptr;
     // For now we just compute the needed space here
     auto soaSize = sizeof(double) * nSlot;
     gpuMallocExperimental(soaTrackStorageArrays_dev, soaSize);
+
+    gpuMallocExperimental(soaNextTrackStorageArrays_dev, soaSize);
+
     auto soaLeaksSize = sizeof(double) * nLeakSlots;
     gpuMallocExperimental(soaLeaksStorageArrays_dev, soaLeaksSize);
     auto soaInjectedSize = sizeof(double) * nInjectionSlots;
     gpuMallocExperimental(soaInjectedStorageArrays_dev, soaInjectedSize);
     // Finally, we need to instantiate the SoA on the allocated memory
     InitializeSoA<<<1, 1>>>(soaTrackStorageArrays_dev, soaTrackStorage_dev, nSlot);
+
+    InitializeSoA<<<1, 1>>>(soaNextTrackStorageArrays_dev, soaNextTrackStorage_dev, nSlot);
+
     InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nLeakSlots);
     InitializeSoA<<<1, 1>>>(soaInjectedStorageArrays_dev, soaInjectedStorage_dev, nInjectionSlots);
 
-    gpuState.particles[i].soaTrack    = soaTrackStorage_dev;
+    gpuState.particles[i].soaTrack = soaTrackStorage_dev;
+
+    gpuState.particles[i].soaNextTrack = soaNextTrackStorage_dev;
+
     gpuState.particles[i].soaLeaks    = soaLeaksStorage_dev;
     gpuState.particles[i].soaInjected = soaInjectedStorage_dev;
 
@@ -1073,6 +1092,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
       electrons.queues.SwapActive();
       positrons.queues.SwapActive();
       gammas.queues.SwapActive();
+
+      // Swap the active track arrays for the next iteration
+      electrons.SwapActiveTracks();
 
       const Secondaries secondaries = {
           .electrons = {electrons.tracks, electrons.soaTrack, electrons.injected, electrons.soaInjected,
@@ -1666,7 +1688,11 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         // Make sure that enqueuing has finished
         waitForOtherStream(gpuState.stream, injectStream);
         // Launch on gpuState.stream guarantees kernels have finished
-        electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ gpuState.stream);
+        electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.nextTracks,
+                             electrons.soaTrack, electrons.soaNextTrack, gpuState.stream);
+        // electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.tracks,
+        //                      electrons.soaTrack, electrons.soaTrack, gpuState.stream);
+        // electrons.SwapActiveTracks();
         // While the defragmentation is happening:
         // - The slot manager can't be modified
         // - The next active queue can't be modified

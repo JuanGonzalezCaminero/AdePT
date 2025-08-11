@@ -1602,7 +1602,6 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             // Freeing of slots has to run exclusively
             // FIXME: Revise this code and make sure all three streams actually need to be synchronized
             // with gpuState.stream
-
             static_assert(gpuState.nSlotManager_dev == ParticleType::NumParticleTypes,
                           "The below launches assume there is a slot manager per particle type.");
             FreeSlots1<<<1000, 32, 0, gpuState.stream>>>(gpuState.slotManager_dev + i);
@@ -1612,31 +1611,19 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             // Freeing of slots has to run exclusively
             // FIXME: Revise this code and make sure all three streams actually need to be synchronized
             // with gpuState.stream
-            waitForOtherStream(gpuState.stream, hitTransferStream);
-            waitForOtherStream(gpuState.stream, injectStream);
-            waitForOtherStream(gpuState.stream, extractStream);
             static_assert(gpuState.nSlotManager_dev == ParticleType::NumParticleTypes,
                           "The below launches assume there is a slot manager per particle type.");
             FreeSlots1<<<10, 256, 0, gpuState.stream>>>(gpuState.slotManagerLeaks_dev + i);
             FreeSlots2<<<1, 1, 0, gpuState.stream>>>(gpuState.slotManagerLeaks_dev + i);
-            waitForOtherStream(hitTransferStream, gpuState.stream);
-            waitForOtherStream(injectStream, gpuState.stream);
-            waitForOtherStream(extractStream, gpuState.stream);
           }
           if (gpuState.stats->slotFillLevelInjection[i] > 0.5) {
             // Freeing of slots has to run exclusively
             // FIXME: Revise this code and make sure all three streams actually need to be synchronized
             // with gpuState.stream
-            waitForOtherStream(gpuState.stream, hitTransferStream);
-            waitForOtherStream(gpuState.stream, injectStream);
-            waitForOtherStream(gpuState.stream, extractStream);
             static_assert(gpuState.nSlotManager_dev == ParticleType::NumParticleTypes,
                           "The below launches assume there is a slot manager per particle type.");
             FreeSlots1<<<10, 256, 0, gpuState.stream>>>(gpuState.slotManagerInjection_dev + i);
             FreeSlots2<<<1, 1, 0, gpuState.stream>>>(gpuState.slotManagerInjection_dev + i);
-            waitForOtherStream(hitTransferStream, gpuState.stream);
-            waitForOtherStream(injectStream, gpuState.stream);
-            waitForOtherStream(extractStream, gpuState.stream);
           }
         }
         waitForOtherStream(hitTransferStream, gpuState.stream);
@@ -1675,14 +1662,23 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         COPCORE_CUDA_CHECK(result);
         COPCORE_CUDA_CHECK(injectResult);
 
-        // waitForOtherStream(gpuState.stream, hitTransferStream);
-        // waitForOtherStream(gpuState.stream, injectStream);
-        // waitForOtherStream(gpuState.stream, extractStream);
-        // electrons.Defragment(gpuState.hepEmBuffers_d.electronsHepEm, gpuState.stream);
-        // waitForOtherStream(hitTransferStream, gpuState.stream);
-        // waitForOtherStream(injectStream, gpuState.stream);
-        // waitForOtherStream(extractStream, gpuState.stream);
-        // cudaDeviceSynchronize();
+        // Done after synchronizing with the stats stream, count will not be affected
+        // Make sure that enqueuing has finished
+        waitForOtherStream(gpuState.stream, injectStream);
+        // Launch on gpuState.stream guarantees kernels have finished
+        electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ gpuState.stream);
+        // While the defragmentation is happening:
+        // - The slot manager can't be modified
+        // - The next active queue can't be modified
+        // 1- Kernels can't start until the defragmentation has finished
+        // This avoids:
+        // - Creation and liberation of slots in the slotManager
+        cudaEventRecord(cudaEvent, gpuState.stream);
+        cudaStreamWaitEvent(electrons.stream, cudaEvent);
+        cudaStreamWaitEvent(positrons.stream, cudaEvent);
+        cudaStreamWaitEvent(gammas.stream, cudaEvent);
+        // 2- Next stats count can't start until defragmentation has finished
+        cudaStreamWaitEvent(statsStream, cudaEvent);
 
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           inFlight += gpuState.stats->inFlight[i];

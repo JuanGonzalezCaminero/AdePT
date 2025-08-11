@@ -206,7 +206,7 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // otherwise, if a particle returns from the device and is injected again (i.e., via lepton nuclear), it would have
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
-    Track &track = generator->InitTrack(
+    Track &track = generator->InitInjectedTrack(
         slot, trackInfo.eKin, seed, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
         static_cast<float>(trackInfo.properTime), trackInfo.weight, trackInfo.position, trackInfo.direction,
         trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
@@ -228,6 +228,8 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
     const auto slot = tracksAndSlots.slotManagers[particleType]->NextSlot();
     // Copy the injected track to the track buffer
     tracksAndSlots.tracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
+    tracksAndSlots.soaTracks[particleType]->fEkin[slot] =
+        tracksAndSlots.soaInjected[particleType]->fEkin[injectionSlot];
     // Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
     tracksAndSlots.slotManagersInjection[particleType]->MarkSlotForFreeing(injectionSlot);
@@ -339,8 +341,8 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
   if (blockIdx.x == 0) {
     // Clear queues and write statistics
     for (int i = threadIdx.x; i < ParticleType::NumParticleTypes; i += blockDim.x) {
-      printf("BEFORE CLEAR: Particle %d, initiallyActive: %ld, nextActive: %ld\n", i,
-             all.queues[i].initiallyActive->size(), all.queues[i].nextActive->size());
+      // printf("BEFORE CLEAR: Particle %d, initiallyActive: %ld, nextActive: %ld\n", i,
+      //        all.queues[i].initiallyActive->size(), all.queues[i].nextActive->size());
       all.queues[i].initiallyActive->clear();
 #ifdef USE_SPLIT_KERNELS
       all.queues[i].propagation->clear();
@@ -363,8 +365,8 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
       stats->slotFillLevel[i]          = tracksAndSlots.slotManagers[i]->FillLevel();
       stats->slotFillLevelLeaks[i]     = tracksAndSlots.slotManagersLeaks[i]->FillLevel();
       stats->slotFillLevelInjection[i] = tracksAndSlots.slotManagersInjection[i]->FillLevel();
-      printf("Particle %d, occupied: %d, in-flight: %ld\n", i, tracksAndSlots.slotManagers[i]->OccupiedSlots(),
-             all.queues[i].nextActive->size());
+      // printf("Particle %d, occupied: %d, in-flight: %ld\n", i, tracksAndSlots.slotManagers[i]->OccupiedSlots(),
+      //        all.queues[i].nextActive->size());
     }
     if (particlesInFlight > occupiedSlots) {
       printf("Error: %d in flight while %d slots allocated\n", particlesInFlight, occupiedSlots);
@@ -744,7 +746,14 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
 
     gpuState.particles[i].leaks = leakStorage_dev;
 
-    //////////////////////////
+    // Allocate space for injecting tracks
+    Track *injectionStorage_dev = nullptr;
+    gpuMalloc(injectionStorage_dev, nInjectionSlots);
+
+    gpuState.particles[i].injected = injectionStorage_dev;
+
+    ///////////////////////////////////////////////////////////////////
+
     short *scanFlags_dev = nullptr;
     int *scanResult_dev  = nullptr;
     gpuMalloc(scanFlags_dev, nSlot);
@@ -753,7 +762,8 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     gpuState.particles[i].scanResult = scanResult_dev;
 
     gpuState.particles[i].nItems = nSlot;
-    //////////////////////////
+
+    ///////////////////////////////////////////////////////////////////
 
     // Experimental: Allocate space for the SoA storing the track info
     SoATrack *soaTrackStorage_dev = nullptr;
@@ -769,26 +779,34 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     // Device pointer to the SoA itself
     gpuMalloc(soaLeaksStorage_dev, 1);
 
+    // Allocate space for the SoA storing the injected particles info
+    SoATrack *soaInjectedStorage_dev = nullptr;
+    gpuMalloc(soaInjectedStorage_dev, 1);
+
+    // Device pointer to the SoA itself
+    gpuMalloc(soaInjectedStorage_dev, 1);
+
     // Now we need to allocate space for the actual arrays
-    SoATrack *soaTrackStorageArrays_dev = nullptr;
-    SoATrack *soaLeaksStorageArrays_dev = nullptr;
+    SoATrack *soaTrackStorageArrays_dev    = nullptr;
+    SoATrack *soaLeaksStorageArrays_dev    = nullptr;
+    SoATrack *soaInjectedStorageArrays_dev = nullptr;
     // For now we just compute the needed space here
     auto soaSize = sizeof(double) * nSlot;
     gpuMallocExperimental(soaTrackStorageArrays_dev, soaSize);
     auto soaLeaksSize = sizeof(double) * nLeakSlots;
     gpuMallocExperimental(soaLeaksStorageArrays_dev, soaLeaksSize);
+    auto soaInjectedSize = sizeof(double) * nInjectionSlots;
+    gpuMallocExperimental(soaInjectedStorageArrays_dev, soaInjectedSize);
     // Finally, we need to instantiate the SoA on the allocated memory
     InitializeSoA<<<1, 1>>>(soaTrackStorageArrays_dev, soaTrackStorage_dev, nSlot);
     InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nLeakSlots);
+    InitializeSoA<<<1, 1>>>(soaInjectedStorageArrays_dev, soaInjectedStorage_dev, nInjectionSlots);
 
-    gpuState.particles[i].soaTrack = soaTrackStorage_dev;
-    gpuState.particles[i].soaLeaks = soaLeaksStorage_dev;
+    gpuState.particles[i].soaTrack    = soaTrackStorage_dev;
+    gpuState.particles[i].soaLeaks    = soaLeaksStorage_dev;
+    gpuState.particles[i].soaInjected = soaInjectedStorage_dev;
 
-    // Allocate space for injecting tracks
-    Track *injectionStorage_dev = nullptr;
-    gpuMalloc(injectionStorage_dev, nInjectionSlots);
-
-    gpuState.particles[i].injected = injectionStorage_dev;
+    ///////////////////////////////////////////////////////////////////
 
     printf("%lu track slots allocated for particle type %d on GPU (%.2lf%% of %d total slots allocated)\n", nSlot, i,
            ParticleType::relativeQueueSize[i] * 100, trackCapacity);
@@ -1057,12 +1075,14 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
       gammas.queues.SwapActive();
 
       const Secondaries secondaries = {
-          .electrons = {electrons.tracks, electrons.soaTrack, electrons.injected, electrons.slotManager,
-                        electrons.slotManagerLeaks, electrons.slotManagerInjection, electrons.queues.nextActive},
-          .positrons = {positrons.tracks, positrons.soaTrack, positrons.injected, positrons.slotManager,
-                        positrons.slotManagerLeaks, positrons.slotManagerInjection, positrons.queues.nextActive},
-          .gammas    = {gammas.tracks, gammas.soaTrack, gammas.injected, gammas.slotManager, gammas.slotManagerLeaks,
-                        gammas.slotManagerInjection, gammas.queues.nextActive},
+          .electrons = {electrons.tracks, electrons.soaTrack, electrons.injected, electrons.soaInjected,
+                        electrons.slotManager, electrons.slotManagerLeaks, electrons.slotManagerInjection,
+                        electrons.queues.nextActive},
+          .positrons = {positrons.tracks, positrons.soaTrack, positrons.injected, positrons.soaInjected,
+                        positrons.slotManager, positrons.slotManagerLeaks, positrons.slotManagerInjection,
+                        positrons.queues.nextActive},
+          .gammas    = {gammas.tracks, gammas.soaTrack, gammas.injected, gammas.soaInjected, gammas.slotManager,
+                        gammas.slotManagerLeaks, gammas.slotManagerInjection, gammas.queues.nextActive},
       };
       const AllParticleQueues allParticleQueues = {{electrons.queues, positrons.queues, gammas.queues}};
 #ifdef USE_SPLIT_KERNELS
@@ -1079,8 +1099,10 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
 #endif
       const TracksAndSlots tracksAndSlots = {
           {electrons.tracks, positrons.tracks, gammas.tracks},
+          {electrons.soaTrack, positrons.soaTrack, gammas.soaTrack},
           {electrons.leaks, positrons.leaks, gammas.leaks},
           {electrons.injected, positrons.injected, gammas.injected},
+          {electrons.soaInjected, positrons.soaInjected, gammas.soaInjected},
           {electrons.slotManager, positrons.slotManager, gammas.slotManager},
           {electrons.slotManagerLeaks, positrons.slotManagerLeaks, gammas.slotManagerLeaks},
           {electrons.slotManagerInjection, positrons.slotManagerInjection, gammas.slotManagerInjection}};
@@ -1191,7 +1213,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries,
             electrons.queues.nextActive, electrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps,
             returnLastStep);
-        debugPrintKernel<<<1, 1, 0, electrons.stream>>>(0, electrons.queues.nextActive);
+        // debugPrintKernel<<<1, 1, 0, electrons.stream>>>(0, electrons.queues.nextActive);
 #else
         TransportElectrons<PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
             electrons.tracks, electrons.leaks, electrons.queues.initiallyActive, secondaries,
@@ -1246,7 +1268,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
             positrons.queues.nextActive, positrons.queues.interactionQueues[3], gpuState.fScoring_dev, returnAllSteps,
             returnLastStep);
-        debugPrintKernel<<<1, 1, 0, positrons.stream>>>(1, positrons.queues.nextActive);
+        // debugPrintKernel<<<1, 1, 0, positrons.stream>>>(1, positrons.queues.nextActive);
 #else
         TransportPositrons<PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
             positrons.tracks, positrons.leaks, positrons.queues.initiallyActive, secondaries,
@@ -1293,7 +1315,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         GammaPhotoelectric<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
             gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
             gammas.queues.interactionQueues[2], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
-        debugPrintKernel<<<1, 1, 0, gammas.stream>>>(2, gammas.queues.nextActive);
+        // debugPrintKernel<<<1, 1, 0, gammas.stream>>>(2, gammas.queues.nextActive);
 #else
         TransportGammas<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
             gammas.tracks, gammas.leaks, gammas.queues.initiallyActive, secondaries, gammas.queues.nextActive,
@@ -1653,14 +1675,14 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         COPCORE_CUDA_CHECK(result);
         COPCORE_CUDA_CHECK(injectResult);
 
-        waitForOtherStream(gpuState.stream, hitTransferStream);
-        waitForOtherStream(gpuState.stream, injectStream);
-        waitForOtherStream(gpuState.stream, extractStream);
-        electrons.Defragment(gpuState.hepEmBuffers_d.electronsHepEm, gpuState.stream);
-        waitForOtherStream(hitTransferStream, gpuState.stream);
-        waitForOtherStream(injectStream, gpuState.stream);
-        waitForOtherStream(extractStream, gpuState.stream);
-        cudaDeviceSynchronize();
+        // waitForOtherStream(gpuState.stream, hitTransferStream);
+        // waitForOtherStream(gpuState.stream, injectStream);
+        // waitForOtherStream(gpuState.stream, extractStream);
+        // electrons.Defragment(gpuState.hepEmBuffers_d.electronsHepEm, gpuState.stream);
+        // waitForOtherStream(hitTransferStream, gpuState.stream);
+        // waitForOtherStream(injectStream, gpuState.stream);
+        // waitForOtherStream(extractStream, gpuState.stream);
+        // cudaDeviceSynchronize();
 
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           inFlight += gpuState.stats->inFlight[i];

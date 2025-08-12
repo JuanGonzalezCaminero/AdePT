@@ -161,12 +161,12 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
     double safety = 0.;
     if (!currentTrack.navState.IsOnBoundary()) {
       // Get the remaining safety only if larger than physicalStepLength
-      safety = currentTrack.GetSafety(currentTrack.pos);
+      safety = soaTrack->GetSafety(slot, currentTrack.pos);
       if (safety < physicalStepLength) {
         // Recompute safety and update it in the track.
         // Use maximum accuracy only if safety is samller than physicalStepLength
         safety = AdePTNavigator::ComputeSafety(currentTrack.pos, currentTrack.navState, physicalStepLength);
-        currentTrack.SetSafety(currentTrack.pos, safety);
+        soaTrack->SetSafety(slot, currentTrack.pos, safety);
       }
     }
     theTrack->SetSafety(safety);
@@ -264,7 +264,7 @@ __global__ void ElectronPropagation(Track *electrons, SoATrack *soaTrack, G4HepE
               magneticField, soaTrack->fEkin[slot], restMass, Charge, theTrack->GetGStepLength(),
               currentTrack.safeLength, currentTrack.pos, currentTrack.dir, currentTrack.navState,
               currentTrack.nextState, currentTrack.hitsurfID, currentTrack.propagated,
-              /*lengthDone,*/ currentTrack.safety,
+              /*lengthDone,*/ soaTrack->fSafety[slot],
               // activeSize < 100 ? max_iterations : max_iters_tail ), // Was
               max_iterations, iterDone, slot, zero_first_step);
       // In case of zero step detected by the field propagator this could be due to back scattering, or wrong relocation
@@ -298,7 +298,7 @@ __global__ void ElectronPropagation(Track *electrons, SoATrack *soaTrack, G4HepE
     // correct information (navState = nextState only if relocated
     // in case of a boundary; see below)
     currentTrack.navState.SetBoundaryState(currentTrack.nextState.IsOnBoundary());
-    if (currentTrack.nextState.IsOnBoundary()) currentTrack.SetSafety(currentTrack.pos, 0.);
+    if (currentTrack.nextState.IsOnBoundary()) soaTrack->SetSafety(slot, currentTrack.pos, 0.);
 
     // Propagate information from geometrical step to MSC.
     theTrack->SetDirection(currentTrack.dir.x(), currentTrack.dir.y(), currentTrack.dir.z());
@@ -343,7 +343,7 @@ __global__ void ElectronMSC(Track *electrons, SoATrack *soaTrack, G4HepEmElectro
       if (dLength2 > kGeomMinLength2) {
         const double dispR = std::sqrt(dLength2);
         // Estimate safety by subtracting the geometrical step length.
-        double safety          = currentTrack.GetSafety(currentTrack.pos);
+        double safety          = soaTrack->GetSafety(slot, currentTrack.pos);
         constexpr double sFact = 0.99;
         double reducedSafety   = sFact * safety;
 
@@ -355,7 +355,7 @@ __global__ void ElectronMSC(Track *electrons, SoATrack *soaTrack, G4HepEmElectro
           // Recompute safety.
           // Use maximum accuracy only if safety is samller than physicalStepLength
           safety = AdePTNavigator::ComputeSafety(currentTrack.pos, currentTrack.navState, dispR);
-          currentTrack.SetSafety(currentTrack.pos, safety);
+          soaTrack->SetSafety(slot, currentTrack.pos, safety);
           reducedSafety = sFact * safety;
 
           // 1b. Far away from geometry boundary:
@@ -472,7 +472,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
                    "physicsStepLength=%E "
                    "safety=%E\n",
                    soaTrack->fEkin[slot], currentTrack.eventId, currentTrack.looperCounter, energyDeposit,
-                   currentTrack.geometryStepLength, theTrack->GetGStepLength(), currentTrack.safety);
+                   currentTrack.geometryStepLength, theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
           continue;
         }
 
@@ -628,7 +628,7 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
                "physicsStepLength=%E "
                "safety=%E\n",
                soaTrack->fEkin[slot], currentTrack.eventId, currentTrack.looperCounter, energyDeposit,
-               currentTrack.geometryStepLength, theTrack->GetGStepLength(), currentTrack.safety);
+               currentTrack.geometryStepLength, theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
       continue;
     }
 

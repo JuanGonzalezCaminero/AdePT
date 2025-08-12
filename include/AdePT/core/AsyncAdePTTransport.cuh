@@ -72,12 +72,12 @@ struct HitProcessingContext {
   std::atomic_bool keepRunning = true;
 };
 
-__global__ void InitializeSoA(void *devPtr, SoATrack *soaTrack, int nSlot)
-{
-  if (threadIdx.x == 0 && blockIdx.x == 0) {
-    soaTrack->InitOnDevice(devPtr, nSlot);
-  }
-}
+// __global__ void InitializeSoA(void *devPtr, SoATrack *soaTrack, int nSlot)
+// {
+//   if (threadIdx.x == 0 && blockIdx.x == 0) {
+//     soaTrack->InitOnDevice(devPtr, nSlot);
+//   }
+// }
 
 /// @brief Init track id for debugging to the number read from ADEPT_DEBUG_TRACK environment variable
 /// The default debug step range is 0 - 10000, and can be changed via ADEPT_DEBUG_MINSTEP/ADEPT_DEBUG_MAXSTEP
@@ -230,7 +230,8 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
     tracksAndSlots.tracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
     tracksAndSlots.soaTracks[particleType]->fEkin[slot] =
         tracksAndSlots.soaInjected[particleType]->fEkin[injectionSlot];
-    // Add the slot to the next active queue
+    // TODO: Is setting the safety necessary here too?
+    //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
     tracksAndSlots.slotManagersInjection[particleType]->MarkSlotForFreeing(injectionSlot);
   }
@@ -615,6 +616,34 @@ void FlushScoring(AdePTScoring &scoring)
   scoring.ClearGPU();
 }
 
+void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int nSlot)
+{
+  auto gpuMalloc = [&gpuState](auto &devPtr, std::size_t N, bool emplaceForAutoDelete = true) {
+    std::size_t size = N;
+    using value_type = std::remove_pointer_t<std::remove_reference_t<decltype(devPtr)>>;
+    if constexpr (std::is_object_v<value_type>) {
+      size *= sizeof(*devPtr);
+    }
+
+    const auto result = cudaMalloc(&devPtr, size);
+    if (result != cudaSuccess) {
+      std::size_t free, total;
+      cudaMemGetInfo(&free, &total);
+      std::stringstream msg;
+      msg << "Not enough space to allocate " << size / 1024. / 1024 << " MB for " << N << " objects of size "
+          << size / N << ". Free memory: " << free / 1024. / 1024 << " MB"
+          << " Occupied memory: " << (total - free) / 1024. / 1024 << " MB\n";
+      throw std::invalid_argument{msg.str()};
+    }
+    if (emplaceForAutoDelete) gpuState.allCudaPointers.push_back(devPtr);
+  };
+  gpuMalloc(hostSoA.fEkin, nSlot);
+  gpuMalloc(hostSoA.fSafety, nSlot);
+  gpuMalloc(hostSoA.fSafetyPos, nSlot);
+  // Copy the host-side SoATrack struct to the device
+  COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
+}
+
 /// Allocate memory on device, as well as streams and cuda events to synchronise kernels.
 /// If successful, this will initialise the member fGPUState.
 /// If memory allocation fails, an exception is thrown. In this case, the caller has to
@@ -655,19 +684,19 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
 
   // EXPERIMENTAL: Just a version of GPUMalloc that doesn't compute the size automatically but receives it as an
   // argument
-  auto gpuMallocExperimental = [&gpuState](auto &devPtr, std::size_t size, bool emplaceForAutoDelete = true) {
-    const auto result = cudaMalloc(&devPtr, size);
-    if (result != cudaSuccess) {
-      std::size_t free, total;
-      cudaMemGetInfo(&free, &total);
-      std::stringstream msg;
-      msg << "Not enough space to allocate " << size / 1024. / 1024 << " MB"
-          << ". Free memory: " << free / 1024. / 1024 << " MB"
-          << " Occupied memory: " << (total - free) / 1024. / 1024 << " MB\n";
-      throw std::invalid_argument{msg.str()};
-    }
-    if (emplaceForAutoDelete) gpuState.allCudaPointers.push_back(devPtr);
-  };
+  // auto gpuMallocExperimental = [&gpuState](auto &devPtr, std::size_t size, bool emplaceForAutoDelete = true) {
+  //   const auto result = cudaMalloc(&devPtr, size);
+  //   if (result != cudaSuccess) {
+  //     std::size_t free, total;
+  //     cudaMemGetInfo(&free, &total);
+  //     std::stringstream msg;
+  //     msg << "Not enough space to allocate " << size / 1024. / 1024 << " MB"
+  //         << ". Free memory: " << free / 1024. / 1024 << " MB"
+  //         << " Occupied memory: " << (total - free) / 1024. / 1024 << " MB\n";
+  //     throw std::invalid_argument{msg.str()};
+  //   }
+  //   if (emplaceForAutoDelete) gpuState.allCudaPointers.push_back(devPtr);
+  // };
 
   // Create a stream to synchronize kernels of all particle types.
   COPCORE_CUDA_CHECK(cudaStreamCreate(&gpuState.stream));
@@ -771,59 +800,64 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
 
     ///////////////////////////////////////////////////////////////////
 
-    // Experimental: Allocate space for the SoA storing the track info
-    SoATrack *soaTrackStorage_dev = nullptr;
+    // Temporary host-side structs
+    SoATrack soaTrackStorage_tmp;
+    SoATrack soaNextTrackStorage_tmp;
+    SoATrack soaLeaksStorage_tmp;
+    SoATrack soaInjectedStorage_tmp;
 
+    // Allocate device space for the SoA storing the track info
+    SoATrack *soaTrackStorage_dev = nullptr;
     // Device pointer to the SoA itself
     gpuMalloc(soaTrackStorage_dev, 1);
 
     // Second track SoA
     SoATrack *soaNextTrackStorage_dev = nullptr;
-
     // Device pointer to the SoA itself
     gpuMalloc(soaNextTrackStorage_dev, 1);
 
     // Allocate space for the SoA storing the leaks info
     SoATrack *soaLeaksStorage_dev = nullptr;
-
     // Device pointer to the SoA itself
     gpuMalloc(soaLeaksStorage_dev, 1);
 
     // Allocate space for the SoA storing the injected particles info
     SoATrack *soaInjectedStorage_dev = nullptr;
-
     // Device pointer to the SoA itself
     gpuMalloc(soaInjectedStorage_dev, 1);
 
-    // Now we need to allocate space for the actual arrays
-    SoATrack *soaTrackStorageArrays_dev     = nullptr;
-    SoATrack *soaNextTrackStorageArrays_dev = nullptr;
-    SoATrack *soaLeaksStorageArrays_dev     = nullptr;
-    SoATrack *soaInjectedStorageArrays_dev  = nullptr;
-    // For now we just compute the needed space here
-    auto soaSize = sizeof(double) * nSlot;
-    gpuMallocExperimental(soaTrackStorageArrays_dev, soaSize);
+    InitializeSoA(gpuState, soaTrackStorage_tmp, *soaTrackStorage_dev, nSlot);
+    InitializeSoA(gpuState, soaNextTrackStorage_tmp, *soaNextTrackStorage_dev, nSlot);
+    InitializeSoA(gpuState, soaLeaksStorage_tmp, *soaLeaksStorage_dev, nLeakSlots);
+    InitializeSoA(gpuState, soaInjectedStorage_tmp, *soaInjectedStorage_dev, nInjectionSlots);
 
-    gpuMallocExperimental(soaNextTrackStorageArrays_dev, soaSize);
+    // // Now we need to allocate space for the actual arrays
+    // SoATrack *soaTrackStorageArrays_dev     = nullptr;
+    // SoATrack *soaNextTrackStorageArrays_dev = nullptr;
+    // SoATrack *soaLeaksStorageArrays_dev     = nullptr;
+    // SoATrack *soaInjectedStorageArrays_dev  = nullptr;
+    // // For now we just compute the needed space here
+    // auto soaSize = sizeof(double) + sizeof(float) +
+    //                sizeof(vecgeom::Vector3D<float>); // + 2 * sizeof(vecgeom::Vector3D<Precision>);
+    // auto soaTracksSize = soaSize * nSlot;
+    // gpuMallocExperimental(soaTrackStorageArrays_dev, soaTracksSize);
 
-    auto soaLeaksSize = sizeof(double) * nLeakSlots;
-    gpuMallocExperimental(soaLeaksStorageArrays_dev, soaLeaksSize);
-    auto soaInjectedSize = sizeof(double) * nInjectionSlots;
-    gpuMallocExperimental(soaInjectedStorageArrays_dev, soaInjectedSize);
-    // Finally, we need to instantiate the SoA on the allocated memory
-    InitializeSoA<<<1, 1>>>(soaTrackStorageArrays_dev, soaTrackStorage_dev, nSlot);
+    // gpuMallocExperimental(soaNextTrackStorageArrays_dev, soaTracksSize);
 
-    InitializeSoA<<<1, 1>>>(soaNextTrackStorageArrays_dev, soaNextTrackStorage_dev, nSlot);
+    // auto soaLeaksSize = soaSize * nLeakSlots;
+    // gpuMallocExperimental(soaLeaksStorageArrays_dev, soaLeaksSize);
+    // auto soaInjectedSize = soaSize * nInjectionSlots;
+    // gpuMallocExperimental(soaInjectedStorageArrays_dev, soaInjectedSize);
+    // // Finally, we need to instantiate the SoA on the allocated memory
+    // InitializeSoA<<<1, 1>>>(soaTrackStorageArrays_dev, soaTrackStorage_dev, nSlot);
+    // InitializeSoA<<<1, 1>>>(soaNextTrackStorageArrays_dev, soaNextTrackStorage_dev, nSlot);
+    // InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nLeakSlots);
+    // InitializeSoA<<<1, 1>>>(soaInjectedStorageArrays_dev, soaInjectedStorage_dev, nInjectionSlots);
 
-    InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nLeakSlots);
-    InitializeSoA<<<1, 1>>>(soaInjectedStorageArrays_dev, soaInjectedStorage_dev, nInjectionSlots);
-
-    gpuState.particles[i].soaTrack = soaTrackStorage_dev;
-
+    gpuState.particles[i].soaTrack     = soaTrackStorage_dev;
     gpuState.particles[i].soaNextTrack = soaNextTrackStorage_dev;
-
-    gpuState.particles[i].soaLeaks    = soaLeaksStorage_dev;
-    gpuState.particles[i].soaInjected = soaInjectedStorage_dev;
+    gpuState.particles[i].soaLeaks     = soaLeaksStorage_dev;
+    gpuState.particles[i].soaInjected  = soaInjectedStorage_dev;
 
     ///////////////////////////////////////////////////////////////////
 
@@ -1685,9 +1719,11 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         // Launch on gpuState.stream guarantees kernels have finished
         electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.nextTracks,
                              electrons.soaTrack, electrons.soaNextTrack, gpuState.stream);
-        // electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.tracks,
-        //                      electrons.soaTrack, electrons.soaTrack, gpuState.stream);
-        // electrons.SwapActiveTracks();
+        // positrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ positrons.tracks, positrons.nextTracks,
+        //                      positrons.soaTrack, positrons.soaNextTrack, gpuState.stream);
+        // gammas.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ gammas.tracks, gammas.nextTracks,
+        // gammas.soaTrack,
+        //                   gammas.soaNextTrack, gpuState.stream);
         // While the defragmentation is happening:
         // - The slot manager can't be modified
         // - The next active queue can't be modified

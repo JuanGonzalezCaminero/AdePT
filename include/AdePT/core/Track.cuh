@@ -16,24 +16,68 @@
 #endif
 
 struct SoATrack {
-  uint fNSlot;
+  // uint fNSlot;
   double *fEkin;
+  float *fSafety;
+  vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
+  // vecgeom::Vector3D<Precision> *fPos;
+  // vecgeom::Vector3D<Precision> *fDir;
 
-  __host__ __device__ void InitOnDevice(void *devPtr, int nSlot)
-  {
-    fNSlot = nSlot;
-    fEkin  = reinterpret_cast<double *>(devPtr);
-    // Move devPtr
-    devPtr = fEkin + fNSlot * sizeof(double);
-    // Follow with any new arrays
-  }
+  // __host__ __device__ void InitOnDevice(void *devPtr, int nSlot)
+  // {
+  //   fNSlot = nSlot;
+  //   fEkin  = reinterpret_cast<double *>(devPtr);
+  //   // Move devPtr
+
+  //   devPtr = fEkin + fNSlot;
+
+  //   // Follow with any new arrays
+  //   fSafety = reinterpret_cast<float *>(devPtr);
+  //   devPtr  = fSafety + fNSlot;
+  //   //
+  //   fSafetyPos = reinterpret_cast<vecgeom::Vector3D<float> *>(devPtr);
+  //   devPtr     = fSafetyPos + fNSlot;
+  //   //
+  //   // fPos   = reinterpret_cast<vecgeom::Vector3D<Precision> *>(devPtr);
+  //   // devPtr = fSafety + fNSlot * sizeof(vecgeom::Vector3D<Precision>);
+  //   //
+  //   // fDir   = reinterpret_cast<vecgeom::Vector3D<Precision> *>(devPtr);
+  //   // devPtr = fDir + fNSlot * sizeof(vecgeom::Vector3D<Precision>);
+  // }
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
-  __device__ void InitTrack(int trackIdx, double eKin, Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
-    fEkin[trackIdx] = eKin;
+    fEkin[trackSlot]   = eKin;
+    fSafety[trackSlot] = 0.f;
+    fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
+  }
+
+  /// @brief Get recomputed cached safety ay a given track position
+  /// @param new_pos Track position
+  /// @param accurate_limit Only return non-zero if the recomputed safety if larger than the accurate_limit
+  /// @return Recomputed safety.
+  __host__ __device__ VECGEOM_FORCE_INLINE float GetSafety(int trackSlot, vecgeom::Vector3D<Precision> const &new_pos,
+                                                           float accurate_limit = 0.f) const
+  {
+    float dsafe = fSafety[trackSlot] - accurate_limit;
+    if (dsafe <= 0.f) return 0.f;
+    float distSq = (vecgeom::Vector3D<float>(new_pos) - fSafetyPos[trackSlot]).Mag2();
+    if (dsafe * dsafe < distSq) return 0.f;
+    return (fSafety[trackSlot] - vecCore::math::Sqrt(distSq));
+  }
+
+  /// @brief Set Safety value computed in a new point
+  /// @param new_pos Position where the safety is computed
+  /// @param safe Safety value
+  __host__ __device__ VECGEOM_FORCE_INLINE void SetSafety(int trackSlot, vecgeom::Vector3D<Precision> const &new_pos,
+                                                          float safe)
+  {
+    fSafetyPos[trackSlot].Set(static_cast<float>(new_pos[0]), static_cast<float>(new_pos[1]),
+                              static_cast<float>(new_pos[2]));
+    fSafety[trackSlot] = vecCore::math::Max(safe, 0.f);
   }
 
   // Needed when passing vectors (in this case this function should receive a reference)
@@ -67,12 +111,12 @@ struct Track {
   float localTime{0.f};
   float properTime{0.f};
 
-  vecgeom::Vector3D<Precision> pos;   ///< track position
-  vecgeom::Vector3D<Precision> dir;   ///< track direction
-  vecgeom::Vector3D<float> safetyPos; ///< last position where the safety was computed
+  vecgeom::Vector3D<Precision> pos; ///< track position
+  vecgeom::Vector3D<Precision> dir; ///< track direction
+  // vecgeom::Vector3D<float> safetyPos; ///< last position where the safety was computed
   // TODO: For better clarity in the split kernels, rename this to "stored safety" as opposed to the
   // safety we get from GetSafety(), which is computed in the moment
-  float safety{0.f};                       ///< last computed safety value
+  // float safety{0.f};                       ///< last computed safety value
   vecgeom::NavigationState navState;       ///< current navigation state
   vecgeom::NavigationState originNavState; ///< navigation state where the vertex was created
 
@@ -154,28 +198,28 @@ struct Track {
     navState.Print();
   }
 
-  /// @brief Get recomputed cached safety ay a given track position
-  /// @param new_pos Track position
-  /// @param accurate_limit Only return non-zero if the recomputed safety if larger than the accurate_limit
-  /// @return Recomputed safety.
-  __host__ __device__ VECGEOM_FORCE_INLINE float GetSafety(vecgeom::Vector3D<Precision> const &new_pos,
-                                                           float accurate_limit = 0.f) const
-  {
-    float dsafe = safety - accurate_limit;
-    if (dsafe <= 0.f) return 0.f;
-    float distSq = (vecgeom::Vector3D<float>(new_pos) - safetyPos).Mag2();
-    if (dsafe * dsafe < distSq) return 0.f;
-    return (safety - vecCore::math::Sqrt(distSq));
-  }
+  // /// @brief Get recomputed cached safety ay a given track position
+  // /// @param new_pos Track position
+  // /// @param accurate_limit Only return non-zero if the recomputed safety if larger than the accurate_limit
+  // /// @return Recomputed safety.
+  // __host__ __device__ VECGEOM_FORCE_INLINE float GetSafety(vecgeom::Vector3D<Precision> const &new_pos,
+  //                                                          float accurate_limit = 0.f) const
+  // {
+  //   float dsafe = safety - accurate_limit;
+  //   if (dsafe <= 0.f) return 0.f;
+  //   float distSq = (vecgeom::Vector3D<float>(new_pos) - safetyPos).Mag2();
+  //   if (dsafe * dsafe < distSq) return 0.f;
+  //   return (safety - vecCore::math::Sqrt(distSq));
+  // }
 
-  /// @brief Set Safety value computed in a new point
-  /// @param new_pos Position where the safety is computed
-  /// @param safe Safety value
-  __host__ __device__ VECGEOM_FORCE_INLINE void SetSafety(vecgeom::Vector3D<Precision> const &new_pos, float safe)
-  {
-    safetyPos.Set(static_cast<float>(new_pos[0]), static_cast<float>(new_pos[1]), static_cast<float>(new_pos[2]));
-    safety = vecCore::math::Max(safe, 0.f);
-  }
+  // /// @brief Set Safety value computed in a new point
+  // /// @param new_pos Position where the safety is computed
+  // /// @param safe Safety value
+  // __host__ __device__ VECGEOM_FORCE_INLINE void SetSafety(vecgeom::Vector3D<Precision> const &new_pos, float safe)
+  // {
+  //   safetyPos.Set(static_cast<float>(new_pos[0]), static_cast<float>(new_pos[1]), static_cast<float>(new_pos[2]));
+  //   safety = vecCore::math::Max(safe, 0.f);
+  // }
 
   __host__ __device__ double Uniform() { return rngState.Rndm(); }
 
@@ -195,8 +239,8 @@ struct Track {
     // A secondary inherits the position of its parent; the caller is responsible
     // to update the directions.
     this->pos = parentPos;
-    this->safetyPos.Set(0.f, 0.f, 0.f);
-    this->safety   = 0.0f;
+    // this->safetyPos.Set(0.f, 0.f, 0.f);
+    // this->safety   = 0.0f;
     this->navState = parentNavState;
 
     // Set the origin for this track

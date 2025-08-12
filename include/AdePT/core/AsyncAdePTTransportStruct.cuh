@@ -202,7 +202,9 @@ __global__ void CompactCopy(unsigned int nItems, Track *trackSrc, Track *trackDs
     // Copy AdePT Tracks
     trackDst[i] = trackSrc[src];
     // Copy AdePT SoA Tracks
-    soaTrackDst->fEkin[i] = soaTrackSrc->fEkin[src];
+    soaTrackDst->fEkin[i]      = soaTrackSrc->fEkin[src];
+    soaTrackDst->fSafety[i]    = soaTrackSrc->fSafety[src];
+    soaTrackDst->fSafetyPos[i] = soaTrackSrc->fSafetyPos[src];
     // Copy G4HepEm tracks
     // electronsHepEm[i] = electronsHepEm[src];
   }

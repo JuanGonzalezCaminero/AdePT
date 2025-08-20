@@ -118,7 +118,7 @@ public:
   /** @brief Returns the size in bytes of a BlockData object with given capacity */
   __host__ __device__ __forceinline__ static size_t SizeOfInstance(int capacity) { return Base_t::SizeOf(capacity); }
 
-  __device__ void sort()
+  __device__ __forceinline__ void sort()
   {
 #ifdef CUDA_ARCH
     if (threadIdx.x == 0 && blockIdx.x == 0) {

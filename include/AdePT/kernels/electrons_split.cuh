@@ -40,6 +40,15 @@ __device__ double GetVelocity(double eKin)
 
 namespace AsyncAdePT {
 
+__device__ __forceinline__ void CopyTrack(int slotSrc, int slotDst, Track *src, Track *dst, SoATrack *soaSrc,
+                                          SoATrack *soaDst)
+{
+  dst[slotDst]                = src[slotSrc];
+  soaDst->fEkin[slotDst]      = soaSrc->fEkin[slotSrc];
+  soaDst->fSafety[slotDst]    = soaSrc->fSafety[slotSrc];
+  soaDst->fSafetyPos[slotDst] = soaSrc->fSafetyPos[slotSrc];
+}
+
 template <bool IsElectron>
 __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
                                G4HepEmElectronTrack *hepEMTracks, const adept::MParray *active, Secondaries secondaries,
@@ -113,9 +122,7 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
           asm("trap;");
         }
         // Free the slot in the tracks slot manager
-        slotManager.MarkSlotForFreeing(slot);
-      } else {
-        nextActiveQueue->push_back(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       }
     };
 
@@ -427,9 +434,24 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
           asm("trap;");
         }
         // Free the slot in the tracks slot manager
-        slotManager.MarkSlotForFreeing(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       } else {
-        nextActiveQueue->push_back(slot);
+        // Get a slot in the next active queue
+        // This is necessary as we are copying the track to the next array
+        unsigned int nextSlot{0};
+        if (IsElectron) {
+          nextSlot = secondaries.electrons.NextSlot();
+          // Copy the track to the next active tracks array
+          CopyTrack(slot, nextSlot, electrons, secondaries.electrons.fNextTracks, soaTrack,
+                    secondaries.electrons.fSoANextTracks);
+        } else {
+          nextSlot = secondaries.positrons.NextSlot();
+          // Copy the track to the next active tracks array
+          CopyTrack(slot, nextSlot, electrons, secondaries.positrons.fNextTracks, soaTrack,
+                    secondaries.positrons.fSoANextTracks);
+        }
+        // Store the slot in the next active queue
+        nextActiveQueue->push_back(nextSlot);
       }
     };
 
@@ -501,7 +523,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
         // Ekin = 0 for correct scoring
         soaTrack->fEkin[slot] = 0;
         // Particle is killed by not enqueuing it for the next iteration. Free the slot it occupies
-        slotManager.MarkSlotForFreeing(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       }
     }
 
@@ -598,9 +620,24 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
           asm("trap;");
         }
         // Free the slot in the tracks slot manager
-        slotManager.MarkSlotForFreeing(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       } else {
-        nextActiveQueue->push_back(slot);
+        // Get a slot in the next active queue
+        // This is necessary as we are copying the track to the next array
+        unsigned int nextSlot{0};
+        if (IsElectron) {
+          nextSlot = secondaries.electrons.NextSlot();
+          // Copy the track to the next active tracks array
+          CopyTrack(slot, nextSlot, electrons, secondaries.electrons.fNextTracks, soaTrack,
+                    secondaries.electrons.fSoANextTracks);
+        } else {
+          nextSlot = secondaries.positrons.NextSlot();
+          // Copy the track to the next active tracks array
+          CopyTrack(slot, nextSlot, electrons, secondaries.positrons.fNextTracks, soaTrack,
+                    secondaries.positrons.fSoANextTracks);
+        }
+        // Store the slot in the next active queue
+        nextActiveQueue->push_back(nextSlot);
       }
     };
 
@@ -647,7 +684,7 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
       currentTrack.nextState.SetLastExited(currentTrack.navState.GetState());
     } else {
       // Particle left the world, don't enqueue it and release the slot
-      slotManager.MarkSlotForFreeing(slot);
+      // slotManager.MarkSlotForFreeing(slot);
       isLastStep = true;
     }
 
@@ -775,7 +812,7 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
     }
   }
   // Particles are killed by not enqueuing them into the new activeQueue (and free the slot in async mode)
-  slotManager.MarkSlotForFreeing(slot);
+  // slotManager.MarkSlotForFreeing(slot);
 }
 
 template <bool IsElectron, typename Scoring>
@@ -799,7 +836,22 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
 
     auto survive = [&]() {
       isLastStep = false; // track survived, do not force return of step
-      nextActiveQueue->push_back(slot);
+      // Get a slot in the next active queue
+      // This is necessary as we are copying the track to the next array
+      unsigned int nextSlot{0};
+      if (IsElectron) {
+        nextSlot = secondaries.electrons.NextSlot();
+        // Copy the track to the next active tracks array
+        CopyTrack(slot, nextSlot, electrons, secondaries.electrons.fNextTracks, soaTrack,
+                  secondaries.electrons.fSoANextTracks);
+      } else {
+        nextSlot = secondaries.positrons.NextSlot();
+        // Copy the track to the next active tracks array
+        CopyTrack(slot, nextSlot, electrons, secondaries.positrons.fNextTracks, soaTrack,
+                  secondaries.positrons.fSoANextTracks);
+      }
+      // Store the slot in the next active queue
+      nextActiveQueue->push_back(nextSlot);
     };
 
     // Retrieve HepEM track
@@ -932,7 +984,22 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
 
     auto survive = [&]() {
       isLastStep = false; // track survived, do not force return of step
-      nextActiveQueue->push_back(slot);
+      // Get a slot in the next active queue
+      // This is necessary as we are copying the track to the next array
+      unsigned int nextSlot{0};
+      if (IsElectron) {
+        nextSlot = secondaries.electrons.NextSlot();
+        // Copy the track to the next active tracks array
+        CopyTrack(slot, nextSlot, electrons, secondaries.electrons.fNextTracks, soaTrack,
+                  secondaries.electrons.fSoANextTracks);
+      } else {
+        nextSlot = secondaries.positrons.NextSlot();
+        // Copy the track to the next active tracks array
+        CopyTrack(slot, nextSlot, electrons, secondaries.positrons.fNextTracks, soaTrack,
+                  secondaries.positrons.fSoANextTracks);
+      }
+      // Store the slot in the next active queue
+      nextActiveQueue->push_back(nextSlot);
     };
 
     // Retrieve HepEM track
@@ -1063,11 +1130,6 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
-    auto survive = [&]() {
-      isLastStep = false; // track survived, do not force return of step
-      nextActiveQueue->push_back(slot);
-    };
-
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
@@ -1165,7 +1227,7 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
     }
 
     // The current track is killed by not enqueuing into the next activeQueue.
-    slotManager.MarkSlotForFreeing(slot);
+    // slotManager.MarkSlotForFreeing(slot);
 
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
@@ -1211,11 +1273,6 @@ __global__ void PositronStoppedAnnihilation(Track *electrons, SoATrack *soaTrack
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
-
-    auto survive = [&]() {
-      isLastStep = false; // track survived, do not force return of step
-      nextActiveQueue->push_back(slot);
-    };
 
     // Retrieve HepEM track
     G4HepEmElectronTrack &elTrack = hepEMTracks[slot];

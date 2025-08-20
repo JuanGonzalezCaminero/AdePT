@@ -1280,6 +1280,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
 
         const auto [threads, blocks] = computeThreadsAndBlocks(particlesInFlight[ParticleType::Electron]);
 #ifdef USE_SPLIT_KERNELS
+        SortQueue<<<1, 1, 0, electrons.stream>>>(electrons.queues.initiallyActive);
+
         ElectronHowFar<true><<<blocks, threads, 0, electrons.stream>>>(
             electrons.tracks, electrons.soaTrack, electrons.leaks, electrons.soaLeaks,
             gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.initiallyActive, secondaries,
@@ -1330,6 +1332,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
 
         const auto [threads, blocks] = computeThreadsAndBlocks(particlesInFlight[ParticleType::Positron]);
 #ifdef USE_SPLIT_KERNELS
+        SortQueue<<<1, 1, 0, positrons.stream>>>(positrons.queues.initiallyActive);
+
         ElectronHowFar<false><<<blocks, threads, 0, positrons.stream>>>(
             positrons.tracks, positrons.soaTrack, positrons.leaks, positrons.soaLeaks,
             gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.initiallyActive, secondaries,
@@ -1389,6 +1393,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
 
         const auto [threads, blocks] = computeThreadsAndBlocks(particlesInFlight[ParticleType::Gamma]);
 #ifdef USE_SPLIT_KERNELS
+        SortQueue<<<1, 1, 0, gammas.stream>>>(gammas.queues.initiallyActive);
+
         GammaHowFar<<<blocks, threads, 0, gammas.stream>>>(
             gammas.tracks, gammas.soaTrack, gammas.leaks, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm,
             gammas.queues.initiallyActive, secondaries, gammas.queues.propagation, gammas.queues.leakedTracksCurrent,

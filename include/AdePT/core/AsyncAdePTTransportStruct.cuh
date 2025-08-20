@@ -34,6 +34,8 @@ namespace AsyncAdePT {
 struct ParticleGenerator {
   Track *fTracks;
   SoATrack *fSoATracks;
+  Track *fNextTracks;
+  SoATrack *fSoANextTracks;
   Track *fInjectedTracks;
   SoATrack *fSoAInjected;
   SlotManager *fSlotManager;
@@ -42,12 +44,13 @@ struct ParticleGenerator {
   adept::MParray *fActiveQueue;
 
 public:
-  __host__ __device__ ParticleGenerator(Track *tracks, SoATrack *soaTracks, Track *injectedTracks,
-                                        SoATrack *soaInjected, SlotManager *slotManager, SlotManager *slotManagerLeaks,
-                                        SlotManager *slotManagerInjection, adept::MParray *activeQueue)
-      : fTracks(tracks), fSoATracks(soaTracks), fInjectedTracks(injectedTracks), fSoAInjected(soaInjected),
-        fSlotManager(slotManager), fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection),
-        fActiveQueue(activeQueue)
+  __host__ __device__ ParticleGenerator(Track *tracks, SoATrack *soaTracks, Track *nextTracks, SoATrack *soaNextTracks,
+                                        Track *injectedTracks, SoATrack *soaInjected, SlotManager *slotManager,
+                                        SlotManager *slotManagerLeaks, SlotManager *slotManagerInjection,
+                                        adept::MParray *activeQueue)
+      : fTracks(tracks), fSoATracks(soaTracks), fNextTracks(nextTracks), fSoANextTracks(soaNextTracks),
+        fInjectedTracks(injectedTracks), fSoAInjected(soaInjected), fSlotManager(slotManager),
+        fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection), fActiveQueue(activeQueue)
   {
   }
 
@@ -63,9 +66,9 @@ public:
   __device__ Track &InitTrack(SlotManager::value_type slot, Ts &&...args)
   {
     // Initialize the values in the SoA storage
-    fSoATracks->InitTrack(slot, std::forward<Ts>(args)...);
+    fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
-    return *new (fTracks + slot) Track{std::forward<Ts>(args)...};
+    return *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
   }
 
   /// Construct a track at the given location, forwarding all arguments to the constructor.
@@ -85,7 +88,7 @@ public:
     const auto slot = NextSlot();
     fActiveQueue->push_back(slot);
     // Initialize the values in the SoA storage
-    fSoATracks->InitTrack(slot, std::forward<Ts>(args)...);
+    fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
     auto &track = InitTrack(slot, std::forward<Ts>(args)...);
     // track.currentSlot = slot;
@@ -172,6 +175,12 @@ dynamic allocations
 #endif
   adept::MParray *leakedTracksCurrent;
   adept::MParray *leakedTracksNext;
+
+  int *keys_in;
+  int *keys_out;
+  int *temp_storage;
+  size_t temp_storage_bytes;
+  int nSlot;
 
   void SwapActive() { std::swap(initiallyActive, nextActive); }
   void SwapLeakedQueue() { std::swap(leakedTracksCurrent, leakedTracksNext); }
@@ -326,6 +335,8 @@ struct AllInteractionQueues {
 struct TracksAndSlots {
   Track *const tracks[ParticleType::NumParticleTypes];
   SoATrack *const soaTracks[ParticleType::NumParticleTypes];
+  Track *const nextTracks[ParticleType::NumParticleTypes];
+  SoATrack *const soaNextTracks[ParticleType::NumParticleTypes];
   Track *const leaks[ParticleType::NumParticleTypes];
   Track *const injected[ParticleType::NumParticleTypes];
   SoATrack *const soaInjected[ParticleType::NumParticleTypes];

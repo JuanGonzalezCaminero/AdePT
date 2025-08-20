@@ -16,6 +16,10 @@
 #include <thrust/device_ptr.h>
 #include <thrust/sort.h>
 
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
+#include <thrust/functional.h>
+
 namespace adept {
 
 /** @brief A variable-size array having elements added in an atomic way */
@@ -114,12 +118,16 @@ public:
   /** @brief Returns the size in bytes of a BlockData object with given capacity */
   __host__ __device__ __forceinline__ static size_t SizeOfInstance(int capacity) { return Base_t::SizeOf(capacity); }
 
-  // void sort(cudaStream_t stream)
-  // {
-  //   thrust::device_ptr<T> begin_ptr(&fData[0]);
-  //   thrust::device_ptr<T> end_ptr(&fData[used]);
-  //   thrust::sort(thrust::cuda::par.on(stream), begin_ptr, end_ptr);
-  // }
+  __device__ void sort()
+  {
+#ifdef CUDA_ARCH
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+      thrust::device_ptr<T> begin_ptr(&fData[0]);
+      thrust::device_ptr<T> end_ptr(&fData[fNused.load()]);
+      thrust::sort(thrust::device, begin_ptr, end_ptr);
+    }
+#endif
+  }
 
 }; // End class MParrayT
 } // End namespace adept

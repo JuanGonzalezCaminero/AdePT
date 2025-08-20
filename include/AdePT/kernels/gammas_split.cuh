@@ -21,6 +21,15 @@ using VolAuxData = adeptint::VolAuxData;
 
 namespace AsyncAdePT {
 
+// __device__ __forceinline__ void CopyTrack(int slotSrc, int slotDst, Track *src, Track *dst, SoATrack *soaSrc,
+//                                           SoATrack *soaDst)
+// {
+//   dst[slotDst]                = src[slotSrc];
+//   soaDst->fEkin[slotDst]      = soaSrc->fEkin[slotSrc];
+//   soaDst->fSafety[slotDst]    = soaSrc->fSafety[slotSrc];
+//   soaDst->fSafetyPos[slotDst] = soaSrc->fSafetyPos[slotSrc];
+// }
+
 __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoATrack *soaLeaks,
                             G4HepEmGammaTrack *hepEMTracks, const adept::MParray *active, Secondaries secondaries,
                             adept::MParray *propagationQueue, adept::MParray *leakedQueue, Stats *InFlightStats,
@@ -72,7 +81,7 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
           asm("trap;");
         }
         // Free the slot in the tracks slot manager
-        slotManager.MarkSlotForFreeing(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       }
     };
 
@@ -197,9 +206,15 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
           asm("trap;");
         }
         // Free the slot in the tracks slot manager
-        slotManager.MarkSlotForFreeing(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       } else {
-        nextActiveQueue->push_back(slot);
+        // Get a slot in the next active queue
+        // This is necessary as we are copying the track to the next array
+        auto nextSlot = secondaries.gammas.NextSlot();
+        // Copy the track to the next active tracks array
+        CopyTrack(slot, nextSlot, gammas, secondaries.gammas.fNextTracks, soaTrack, secondaries.gammas.fSoANextTracks);
+        // Store the slot in the next active queue
+        nextActiveQueue->push_back(nextSlot);
       }
     };
 
@@ -266,9 +281,15 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
           asm("trap;");
         }
         // Free the slot in the tracks slot manager
-        slotManager.MarkSlotForFreeing(slot);
+        // slotManager.MarkSlotForFreeing(slot);
       } else {
-        nextActiveQueue->push_back(slot);
+        // Get a slot in the next active queue
+        // This is necessary as we are copying the track to the next array
+        auto nextSlot = secondaries.gammas.NextSlot();
+        // Copy the track to the next active tracks array
+        CopyTrack(slot, nextSlot, gammas, secondaries.gammas.fNextTracks, soaTrack, secondaries.gammas.fSoANextTracks);
+        // Store the slot in the next active queue
+        nextActiveQueue->push_back(nextSlot);
       }
     };
 
@@ -335,7 +356,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
       }
     } else {
       // release slot for particle that has left the world
-      slotManager.MarkSlotForFreeing(slot);
+      // slotManager.MarkSlotForFreeing(slot);
 
       // particle has left the world, record hit if last or all steps are returned
       if (returnAllSteps || returnLastStep)
@@ -386,7 +407,13 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     // Write local variables back into track and enqueue
     auto survive = [&]() {
       isLastStep = false; // particle survived
-      nextActiveQueue->push_back(slot);
+      // Get a slot in the next active queue
+      // This is necessary as we are copying the track to the next array
+      auto nextSlot = secondaries.gammas.NextSlot();
+      // Copy the track to the next active tracks array
+      CopyTrack(slot, nextSlot, gammas, secondaries.gammas.fNextTracks, soaTrack, secondaries.gammas.fSoANextTracks);
+      // Store the slot in the next active queue
+      nextActiveQueue->push_back(nextSlot);
     };
 
     G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
@@ -495,7 +522,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     }
 
     // The current track is killed by not enqueuing into the next activeQueue and the slot is released
-    slotManager.MarkSlotForFreeing(slot);
+    // slotManager.MarkSlotForFreeing(slot);
 
     //////////////
 
@@ -546,7 +573,13 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
     // Write local variables back into track and enqueue
     auto survive = [&]() {
       isLastStep = false; // particle survived
-      nextActiveQueue->push_back(slot);
+      // Get a slot in the next active queue
+      // This is necessary as we are copying the track to the next array
+      auto nextSlot = secondaries.gammas.NextSlot();
+      // Copy the track to the next active tracks array
+      CopyTrack(slot, nextSlot, gammas, secondaries.gammas.fNextTracks, soaTrack, secondaries.gammas.fSoANextTracks);
+      // Store the slot in the next active queue
+      nextActiveQueue->push_back(nextSlot);
     };
 
     G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
@@ -628,7 +661,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
       edep += newEnergyGamma;
       newEnergyGamma = 0.;
       // The current track is killed by not enqueuing into the next activeQueue and the slot is released
-      slotManager.MarkSlotForFreeing(slot);
+      // slotManager.MarkSlotForFreeing(slot);
     }
 
     //////////////
@@ -681,7 +714,13 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
     // Write local variables back into track and enqueue
     auto survive = [&]() {
       isLastStep = false; // particle survived
-      nextActiveQueue->push_back(slot);
+      // Get a slot in the next active queue
+      // This is necessary as we are copying the track to the next array
+      auto nextSlot = secondaries.gammas.NextSlot();
+      // Copy the track to the next active tracks array
+      CopyTrack(slot, nextSlot, gammas, secondaries.gammas.fNextTracks, soaTrack, secondaries.gammas.fSoANextTracks);
+      // Store the slot in the next active queue
+      nextActiveQueue->push_back(nextSlot);
     };
 
     G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
@@ -752,7 +791,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
       edep = soaTrack->fEkin[slot];
     }
     // The current track is killed by not enqueuing into the next activeQueue and the slot is released
-    slotManager.MarkSlotForFreeing(slot);
+    // slotManager.MarkSlotForFreeing(slot);
 
     //////////////
 

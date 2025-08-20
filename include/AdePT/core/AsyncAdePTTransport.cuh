@@ -227,12 +227,14 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
     // Get a slot in the track buffer
     const auto slot = tracksAndSlots.slotManagers[particleType]->NextSlot();
     // Copy the injected track to the track buffer
-    tracksAndSlots.tracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
-    tracksAndSlots.soaTracks[particleType]->fEkin[slot] =
+    tracksAndSlots.nextTracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fEkin[slot] =
         tracksAndSlots.soaInjected[particleType]->fEkin[injectionSlot];
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
+    // Not necessary, we can just clear the slotManager as all particles are enqueued
+    // However, this would probably be faster if done in a kernel with a larger grid
     tracksAndSlots.slotManagersInjection[particleType]->MarkSlotForFreeing(injectionSlot);
   }
 
@@ -682,22 +684,6 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     if (emplaceForAutoDelete) gpuState.allCudaPointers.push_back(devPtr);
   };
 
-  // EXPERIMENTAL: Just a version of GPUMalloc that doesn't compute the size automatically but receives it as an
-  // argument
-  // auto gpuMallocExperimental = [&gpuState](auto &devPtr, std::size_t size, bool emplaceForAutoDelete = true) {
-  //   const auto result = cudaMalloc(&devPtr, size);
-  //   if (result != cudaSuccess) {
-  //     std::size_t free, total;
-  //     cudaMemGetInfo(&free, &total);
-  //     std::stringstream msg;
-  //     msg << "Not enough space to allocate " << size / 1024. / 1024 << " MB"
-  //         << ". Free memory: " << free / 1024. / 1024 << " MB"
-  //         << " Occupied memory: " << (total - free) / 1024. / 1024 << " MB\n";
-  //     throw std::invalid_argument{msg.str()};
-  //   }
-  //   if (emplaceForAutoDelete) gpuState.allCudaPointers.push_back(devPtr);
-  // };
-
   // Create a stream to synchronize kernels of all particle types.
   COPCORE_CUDA_CHECK(cudaStreamCreate(&gpuState.stream));
 
@@ -996,6 +982,36 @@ __global__ void debugPrintKernel(int type, adept::MParray *nextActiveQueue)
   printf("Particle %d Next active size: %ld\n", type, nextActiveQueue->size());
 }
 
+__global__ void ClearSlotManagers(SlotManager *sm)
+{
+  for (unsigned int i = 0; i < ParticleType::NumParticleTypes; i++)
+    sm[i].Clear();
+}
+
+__global__ void CountHoles(/*int *queue, */ adept::MParray *queue, int nSlot)
+{
+  int last = (*queue)[0];
+  int nHoles{0};
+  for (int i = 1; i < nSlot; i++) {
+    if (i < 20) printf("%d, ", (*queue)[i]);
+    if ((*queue)[i] > last + 1) {
+      nHoles += 1;
+    }
+    last = (*queue)[i];
+  }
+  printf("\nHOLES: %d\n", nHoles);
+}
+
+void CheckCompactness(ParticleQueues queues, cudaStream_t stream)
+{
+  CountHoles<<<1, 1, 0, stream>>>(queues.propagation, queues.nSlot);
+}
+
+__global__ void SortQueue(adept::MParray *queue)
+{
+  queue->sort();
+}
+
 void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, int scoringCapacity, int numThreads,
                    TrackBuffer &trackBuffer, GPUstate &gpuState, std::vector<std::atomic<EventState>> &eventStates,
                    std::condition_variable &cvG4Workers, std::vector<AdePTScoring> &scoring, int adeptSeed,
@@ -1068,9 +1084,6 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
     }
   }
 
-  // const AllSoA allSoA{electrons.soaTrack, positrons.soaTrack, gammas.soaTrack,
-  //                     electrons.soaLeaks, positrons.soaLeaks, gammas.soaLeaks};
-
   while (gpuState.runTransport) {
     // NVTXTracer nvtx1{"Setup"}, nvtx2{"Setup2"};
     InitSlotManagers<<<80, 256, 0, gpuState.stream>>>(gpuState.slotManager_dev, gpuState.nSlotManager_dev);
@@ -1129,16 +1142,40 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
 
       // Swap the active track arrays for the next iteration
       electrons.SwapActiveTracks();
+      positrons.SwapActiveTracks();
+      gammas.SwapActiveTracks();
+
+      // Clear the slotManagers (So tracks are inserted into the next active track array starting from 0)
+      // This doesn't affect the current active queue or current track array, the slotManager is only used
+      // to insert into the next track array
+
+      // 1 - Make sure that enqueuing has finished
+      // * This is not strictly necessary as the injectStream is synchronized at the end of the iteration for
+      // now. However this may change in the future
+      waitForOtherStream(gpuState.stream, injectStream);
+      // 2 - Launch on gpuState.stream guarantees that the transport from last iteration has finished
+      ClearSlotManagers<<<256, 100, 0, gpuState.stream>>>(gpuState.slotManager_dev);
+      // 3 - Kernels can't start until the slotManagers are clear
+      // This avoids:
+      // - Creation and liberation of slots in the slotManager
+      cudaEventRecord(cudaEvent, gpuState.stream);
+      cudaStreamWaitEvent(electrons.stream, cudaEvent);
+      cudaStreamWaitEvent(positrons.stream, cudaEvent);
+      cudaStreamWaitEvent(gammas.stream, cudaEvent);
+      // 4- This doesn't interfere with stats count, since:
+      // * We synchronize with the stats stream at the end of the previous iteration
+      // * The stats count acts only on the active queue
 
       const Secondaries secondaries = {
-          .electrons = {electrons.tracks, electrons.soaTrack, electrons.injected, electrons.soaInjected,
-                        electrons.slotManager, electrons.slotManagerLeaks, electrons.slotManagerInjection,
-                        electrons.queues.nextActive},
-          .positrons = {positrons.tracks, positrons.soaTrack, positrons.injected, positrons.soaInjected,
-                        positrons.slotManager, positrons.slotManagerLeaks, positrons.slotManagerInjection,
-                        positrons.queues.nextActive},
-          .gammas    = {gammas.tracks, gammas.soaTrack, gammas.injected, gammas.soaInjected, gammas.slotManager,
-                        gammas.slotManagerLeaks, gammas.slotManagerInjection, gammas.queues.nextActive},
+          .electrons = {electrons.tracks, electrons.soaTrack, electrons.nextTracks, electrons.soaNextTrack,
+                        electrons.injected, electrons.soaInjected, electrons.slotManager, electrons.slotManagerLeaks,
+                        electrons.slotManagerInjection, electrons.queues.nextActive},
+          .positrons = {positrons.tracks, positrons.soaTrack, positrons.nextTracks, positrons.soaNextTrack,
+                        positrons.injected, positrons.soaInjected, positrons.slotManager, positrons.slotManagerLeaks,
+                        positrons.slotManagerInjection, positrons.queues.nextActive},
+          .gammas    = {gammas.tracks, gammas.soaTrack, gammas.nextTracks, gammas.soaNextTrack, gammas.injected,
+                        gammas.soaInjected, gammas.slotManager, gammas.slotManagerLeaks, gammas.slotManagerInjection,
+                        gammas.queues.nextActive},
       };
       const AllParticleQueues allParticleQueues = {{electrons.queues, positrons.queues, gammas.queues}};
 #ifdef USE_SPLIT_KERNELS
@@ -1156,6 +1193,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
       const TracksAndSlots tracksAndSlots = {
           {electrons.tracks, positrons.tracks, gammas.tracks},
           {electrons.soaTrack, positrons.soaTrack, gammas.soaTrack},
+          {electrons.nextTracks, positrons.nextTracks, gammas.nextTracks},
+          {electrons.soaNextTrack, positrons.soaNextTrack, gammas.soaNextTrack},
           {electrons.leaks, positrons.leaks, gammas.leaks},
           {electrons.injected, positrons.injected, gammas.injected},
           {electrons.soaInjected, positrons.soaInjected, gammas.soaInjected},
@@ -1246,6 +1285,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.initiallyActive, secondaries,
             electrons.queues.nextActive, electrons.queues.propagation, electrons.queues.leakedTracksCurrent,
             gpuState.stats_dev, allowFinishOffEvent);
+
+        SortQueue<<<1, 1, 0, electrons.stream>>>(electrons.queues.propagation);
+
         ElectronPropagation<true><<<blocks, threads, 0, electrons.stream>>>(
             electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.propagation,
             electrons.queues.leakedTracksCurrent);
@@ -1293,6 +1335,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.initiallyActive, secondaries,
             positrons.queues.nextActive, positrons.queues.propagation, positrons.queues.leakedTracksCurrent,
             gpuState.stats_dev, allowFinishOffEvent);
+
+        SortQueue<<<1, 1, 0, positrons.stream>>>(positrons.queues.propagation);
+
         ElectronPropagation<false><<<blocks, threads, 0, positrons.stream>>>(
             positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.propagation,
             positrons.queues.leakedTracksCurrent);
@@ -1348,6 +1393,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             gammas.tracks, gammas.soaTrack, gammas.leaks, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm,
             gammas.queues.initiallyActive, secondaries, gammas.queues.propagation, gammas.queues.leakedTracksCurrent,
             gpuState.stats_dev, allowFinishOffEvent);
+
+        SortQueue<<<1, 1, 0, gammas.stream>>>(gammas.queues.propagation);
+
         GammaPropagation<<<blocks, threads, 0, gammas.stream>>>(
             gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, gammas.queues.propagation);
         GammaSetupInteractions<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
@@ -1713,29 +1761,29 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         COPCORE_CUDA_CHECK(result);
         COPCORE_CUDA_CHECK(injectResult);
 
-        // Done after synchronizing with the stats stream, count will not be affected
-        // Make sure that enqueuing has finished
-        waitForOtherStream(gpuState.stream, injectStream);
-        // Launch on gpuState.stream guarantees kernels have finished
-        electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.nextTracks,
-                             electrons.soaTrack, electrons.soaNextTrack, gpuState.stream);
-        // positrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ positrons.tracks, positrons.nextTracks,
-        //                      positrons.soaTrack, positrons.soaNextTrack, gpuState.stream);
-        // gammas.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ gammas.tracks, gammas.nextTracks,
-        // gammas.soaTrack,
-        //                   gammas.soaNextTrack, gpuState.stream);
-        // While the defragmentation is happening:
-        // - The slot manager can't be modified
-        // - The next active queue can't be modified
-        // 1- Kernels can't start until the defragmentation has finished
-        // This avoids:
-        // - Creation and liberation of slots in the slotManager
-        cudaEventRecord(cudaEvent, gpuState.stream);
-        cudaStreamWaitEvent(electrons.stream, cudaEvent);
-        cudaStreamWaitEvent(positrons.stream, cudaEvent);
-        cudaStreamWaitEvent(gammas.stream, cudaEvent);
-        // 2- Next stats count can't start until defragmentation has finished
-        cudaStreamWaitEvent(statsStream, cudaEvent);
+        // // Done after synchronizing with the stats stream, count will not be affected
+        // // Make sure that enqueuing has finished
+        // waitForOtherStream(gpuState.stream, injectStream);
+        // // Launch on gpuState.stream guarantees kernels have finished
+        // electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.nextTracks,
+        //                      electrons.soaTrack, electrons.soaNextTrack, gpuState.stream);
+        // // positrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ positrons.tracks, positrons.nextTracks,
+        // //                      positrons.soaTrack, positrons.soaNextTrack, gpuState.stream);
+        // // gammas.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ gammas.tracks, gammas.nextTracks,
+        // // gammas.soaTrack,
+        // //                   gammas.soaNextTrack, gpuState.stream);
+        // // While the defragmentation is happening:
+        // // - The slot manager can't be modified
+        // // - The next active queue can't be modified
+        // // 1- Kernels can't start until the defragmentation has finished
+        // // This avoids:
+        // // - Creation and liberation of slots in the slotManager
+        // cudaEventRecord(cudaEvent, gpuState.stream);
+        // cudaStreamWaitEvent(electrons.stream, cudaEvent);
+        // cudaStreamWaitEvent(positrons.stream, cudaEvent);
+        // cudaStreamWaitEvent(gammas.stream, cudaEvent);
+        // // 2- Next stats count can't start until defragmentation has finished
+        // cudaStreamWaitEvent(statsStream, cudaEvent);
 
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           inFlight += gpuState.stats->inFlight[i];

@@ -71,9 +71,9 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot]           = gammas[slot];
-        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
-        auto success              = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot] = gammas[slot];
+        CopyTrack(slot, leakSlot, gammas, leaks, soaTrack, soaLeaks);
+        auto success = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in gammas leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -196,9 +196,9 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot]           = gammas[slot];
-        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
-        auto success              = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot] = gammas[slot];
+        CopyTrack(slot, leakSlot, gammas, leaks, soaTrack, soaLeaks);
+        auto success = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in gammas leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -271,9 +271,9 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot]           = gammas[slot];
-        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
-        auto success              = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot] = gammas[slot];
+        CopyTrack(slot, leakSlot, gammas, leaks, soaTrack, soaLeaks);
+        auto success = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in gammas leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\

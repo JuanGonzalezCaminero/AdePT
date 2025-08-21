@@ -112,9 +112,9 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
         else
           leakSlot = secondaries.positrons.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot]           = electrons[slot];
-        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
-        auto success              = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot] = electrons[slot];
+        CopyTrack(slot, leakSlot, electrons, leaks, soaTrack, soaLeaks);
+        auto success = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in e-/+ leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -424,9 +424,9 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
         else
           leakSlot = secondaries.positrons.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot]           = electrons[slot];
-        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
-        auto success              = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot] = electrons[slot];
+        CopyTrack(slot, leakSlot, electrons, leaks, soaTrack, soaLeaks);
+        auto success = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in e-/+ leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\
@@ -610,9 +610,9 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
         else
           leakSlot = secondaries.positrons.NextLeakSlot();
         // Copy the track to the leaks array and store the index in the leak queue
-        leaks[leakSlot]           = electrons[slot];
-        soaLeaks->fEkin[leakSlot] = soaTrack->fEkin[slot];
-        auto success              = leakedQueue->push_back(leakSlot);
+        leaks[leakSlot] = electrons[slot];
+        CopyTrack(slot, leakSlot, electrons, leaks, soaTrack, soaLeaks);
+        auto success = leakedQueue->push_back(leakSlot);
         if (!success) {
           printf("ERROR: No space left in e-/+ leaks queue.\n\
 \tThe threshold for flushing the leak buffer may be too high\n\

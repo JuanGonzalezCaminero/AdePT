@@ -72,13 +72,6 @@ struct HitProcessingContext {
   std::atomic_bool keepRunning = true;
 };
 
-// __global__ void InitializeSoA(void *devPtr, SoATrack *soaTrack, int nSlot)
-// {
-//   if (threadIdx.x == 0 && blockIdx.x == 0) {
-//     soaTrack->InitOnDevice(devPtr, nSlot);
-//   }
-// }
-
 /// @brief Init track id for debugging to the number read from ADEPT_DEBUG_TRACK environment variable
 /// The default debug step range is 0 - 10000, and can be changed via ADEPT_DEBUG_MINSTEP/ADEPT_DEBUG_MAXSTEP
 /// @return Debugging enabled
@@ -816,29 +809,6 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     InitializeSoA(gpuState, soaNextTrackStorage_tmp, *soaNextTrackStorage_dev, nSlot);
     InitializeSoA(gpuState, soaLeaksStorage_tmp, *soaLeaksStorage_dev, nLeakSlots);
     InitializeSoA(gpuState, soaInjectedStorage_tmp, *soaInjectedStorage_dev, nInjectionSlots);
-
-    // // Now we need to allocate space for the actual arrays
-    // SoATrack *soaTrackStorageArrays_dev     = nullptr;
-    // SoATrack *soaNextTrackStorageArrays_dev = nullptr;
-    // SoATrack *soaLeaksStorageArrays_dev     = nullptr;
-    // SoATrack *soaInjectedStorageArrays_dev  = nullptr;
-    // // For now we just compute the needed space here
-    // auto soaSize = sizeof(double) + sizeof(float) +
-    //                sizeof(vecgeom::Vector3D<float>); // + 2 * sizeof(vecgeom::Vector3D<Precision>);
-    // auto soaTracksSize = soaSize * nSlot;
-    // gpuMallocExperimental(soaTrackStorageArrays_dev, soaTracksSize);
-
-    // gpuMallocExperimental(soaNextTrackStorageArrays_dev, soaTracksSize);
-
-    // auto soaLeaksSize = soaSize * nLeakSlots;
-    // gpuMallocExperimental(soaLeaksStorageArrays_dev, soaLeaksSize);
-    // auto soaInjectedSize = soaSize * nInjectionSlots;
-    // gpuMallocExperimental(soaInjectedStorageArrays_dev, soaInjectedSize);
-    // // Finally, we need to instantiate the SoA on the allocated memory
-    // InitializeSoA<<<1, 1>>>(soaTrackStorageArrays_dev, soaTrackStorage_dev, nSlot);
-    // InitializeSoA<<<1, 1>>>(soaNextTrackStorageArrays_dev, soaNextTrackStorage_dev, nSlot);
-    // InitializeSoA<<<1, 1>>>(soaLeaksStorageArrays_dev, soaLeaksStorage_dev, nLeakSlots);
-    // InitializeSoA<<<1, 1>>>(soaInjectedStorageArrays_dev, soaInjectedStorage_dev, nInjectionSlots);
 
     gpuState.particles[i].soaTrack     = soaTrackStorage_dev;
     gpuState.particles[i].soaNextTrack = soaNextTrackStorage_dev;
@@ -1766,30 +1736,6 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         }
         COPCORE_CUDA_CHECK(result);
         COPCORE_CUDA_CHECK(injectResult);
-
-        // // Done after synchronizing with the stats stream, count will not be affected
-        // // Make sure that enqueuing has finished
-        // waitForOtherStream(gpuState.stream, injectStream);
-        // // Launch on gpuState.stream guarantees kernels have finished
-        // electrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ electrons.tracks, electrons.nextTracks,
-        //                      electrons.soaTrack, electrons.soaNextTrack, gpuState.stream);
-        // // positrons.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ positrons.tracks, positrons.nextTracks,
-        // //                      positrons.soaTrack, positrons.soaNextTrack, gpuState.stream);
-        // // gammas.Defragment(/*gpuState.hepEmBuffers_d.electronsHepEm,*/ gammas.tracks, gammas.nextTracks,
-        // // gammas.soaTrack,
-        // //                   gammas.soaNextTrack, gpuState.stream);
-        // // While the defragmentation is happening:
-        // // - The slot manager can't be modified
-        // // - The next active queue can't be modified
-        // // 1- Kernels can't start until the defragmentation has finished
-        // // This avoids:
-        // // - Creation and liberation of slots in the slotManager
-        // cudaEventRecord(cudaEvent, gpuState.stream);
-        // cudaStreamWaitEvent(electrons.stream, cudaEvent);
-        // cudaStreamWaitEvent(positrons.stream, cudaEvent);
-        // cudaStreamWaitEvent(gammas.stream, cudaEvent);
-        // // 2- Next stats count can't start until defragmentation has finished
-        // cudaStreamWaitEvent(statsStream, cudaEvent);
 
         for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
           inFlight += gpuState.stats->inFlight[i];

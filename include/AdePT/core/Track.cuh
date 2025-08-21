@@ -23,28 +23,6 @@ struct SoATrack {
   // vecgeom::Vector3D<Precision> *fPos;
   // vecgeom::Vector3D<Precision> *fDir;
 
-  // __host__ __device__ void InitOnDevice(void *devPtr, int nSlot)
-  // {
-  //   fNSlot = nSlot;
-  //   fEkin  = reinterpret_cast<double *>(devPtr);
-  //   // Move devPtr
-
-  //   devPtr = fEkin + fNSlot;
-
-  //   // Follow with any new arrays
-  //   fSafety = reinterpret_cast<float *>(devPtr);
-  //   devPtr  = fSafety + fNSlot;
-  //   //
-  //   fSafetyPos = reinterpret_cast<vecgeom::Vector3D<float> *>(devPtr);
-  //   devPtr     = fSafetyPos + fNSlot;
-  //   //
-  //   // fPos   = reinterpret_cast<vecgeom::Vector3D<Precision> *>(devPtr);
-  //   // devPtr = fSafety + fNSlot * sizeof(vecgeom::Vector3D<Precision>);
-  //   //
-  //   // fDir   = reinterpret_cast<vecgeom::Vector3D<Precision> *>(devPtr);
-  //   // devPtr = fDir + fNSlot * sizeof(vecgeom::Vector3D<Precision>);
-  // }
-
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, Args...)
@@ -197,29 +175,6 @@ struct Track {
     //        dir[0], dir[1], dir[2], GetSafety(pos), looperCounter);
     navState.Print();
   }
-
-  // /// @brief Get recomputed cached safety ay a given track position
-  // /// @param new_pos Track position
-  // /// @param accurate_limit Only return non-zero if the recomputed safety if larger than the accurate_limit
-  // /// @return Recomputed safety.
-  // __host__ __device__ VECGEOM_FORCE_INLINE float GetSafety(vecgeom::Vector3D<Precision> const &new_pos,
-  //                                                          float accurate_limit = 0.f) const
-  // {
-  //   float dsafe = safety - accurate_limit;
-  //   if (dsafe <= 0.f) return 0.f;
-  //   float distSq = (vecgeom::Vector3D<float>(new_pos) - safetyPos).Mag2();
-  //   if (dsafe * dsafe < distSq) return 0.f;
-  //   return (safety - vecCore::math::Sqrt(distSq));
-  // }
-
-  // /// @brief Set Safety value computed in a new point
-  // /// @param new_pos Position where the safety is computed
-  // /// @param safe Safety value
-  // __host__ __device__ VECGEOM_FORCE_INLINE void SetSafety(vecgeom::Vector3D<Precision> const &new_pos, float safe)
-  // {
-  //   safetyPos.Set(static_cast<float>(new_pos[0]), static_cast<float>(new_pos[1]), static_cast<float>(new_pos[2]));
-  //   safety = vecCore::math::Max(safe, 0.f);
-  // }
 
   __host__ __device__ double Uniform() { return rngState.Rndm(); }
 

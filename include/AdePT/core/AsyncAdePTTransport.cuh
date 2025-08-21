@@ -200,9 +200,9 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, seed, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
-        static_cast<float>(trackInfo.properTime), trackInfo.weight, trackInfo.position, trackInfo.direction,
-        trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
+        slot, trackInfo.eKin, trackInfo.position, seed, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
+        static_cast<float>(trackInfo.properTime), trackInfo.weight, trackInfo.direction, trackInfo.eventId,
+        trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
     // track.currentSlot = slot;
     track.navState.Clear();
     track.navState       = trackinfo[i].navState;
@@ -223,6 +223,8 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
     tracksAndSlots.nextTracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fEkin[slot] =
         tracksAndSlots.soaInjected[particleType]->fEkin[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fPos[slot] =
+        tracksAndSlots.soaInjected[particleType]->fPos[injectionSlot];
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
@@ -291,9 +293,9 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       // NOTE: Sync transport copies data into trackData structs during transport.
       // Async transport stores the slots and copies to trackdata structs for transfer to
       // host here. These approaches should be unified.
-      fromDevice[idx].position[0]  = track->pos[0];
-      fromDevice[idx].position[1]  = track->pos[1];
-      fromDevice[idx].position[2]  = track->pos[2];
+      fromDevice[idx].position[0]  = soaLeaks->fPos[trackSlot][0];
+      fromDevice[idx].position[1]  = soaLeaks->fPos[trackSlot][1];
+      fromDevice[idx].position[2]  = soaLeaks->fPos[trackSlot][2];
       fromDevice[idx].direction[0] = track->dir[0];
       fromDevice[idx].direction[1] = track->dir[1];
       fromDevice[idx].direction[2] = track->dir[2];
@@ -635,6 +637,7 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fEkin, nSlot);
   gpuMalloc(hostSoA.fSafety, nSlot);
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
+  gpuMalloc(hostSoA.fPos, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }

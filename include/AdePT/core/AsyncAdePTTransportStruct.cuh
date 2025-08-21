@@ -68,7 +68,11 @@ public:
     // Initialize the values in the SoA storage
     fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
-    return *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
+    // return *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
+    auto &track = *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
+    // IMPORTANT: Only needed during the transition from AoS to SoA
+    track.currentSlot = slot;
+    return track;
   }
 
   /// Construct a track at the given location, forwarding all arguments to the constructor.
@@ -91,7 +95,8 @@ public:
     fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
     auto &track = InitTrack(slot, std::forward<Ts>(args)...);
-    // track.currentSlot = slot;
+    // IMPORTANT: Only needed during the transition from AoS to SoA
+    track.currentSlot = slot;
     return track;
   }
 

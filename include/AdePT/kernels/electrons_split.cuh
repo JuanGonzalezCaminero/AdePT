@@ -75,9 +75,10 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
 
   int activeSize = active->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot           = (*active)[i];
-    Track &currentTrack      = electrons[slot];
-    SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager : *secondaries.positrons.fSlotManager;
+    const int slot      = (*active)[i];
+    Track &currentTrack = electrons[slot];
+    // SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager :
+    // *secondaries.positrons.fSlotManager;
 
     // electrons[slot].currentSlot = slot;
 
@@ -402,8 +403,9 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
 {
   int activeSize = active->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot           = (*active)[i];
-    SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager : *secondaries.positrons.fSlotManager;
+    const int slot = (*active)[i];
+    // SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager :
+    // *secondaries.positrons.fSlotManager;
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
@@ -588,8 +590,9 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
   constexpr Precision kPushDistance = 1000 * vecgeom::kTolerance;
   int activeSize                    = relocatingQueue->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot           = (*relocatingQueue)[i];
-    SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager : *secondaries.positrons.fSlotManager;
+    const int slot = (*relocatingQueue)[i];
+    // SlotManager &slotManager = IsElectron ? *secondaries.electrons.fSlotManager :
+    // *secondaries.positrons.fSlotManager;
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id
@@ -1120,8 +1123,8 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
   int activeSize = interactingQueue->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
     // const int slot           = (*active)[i];
-    const int slot           = (*interactingQueue)[i];
-    SlotManager &slotManager = *secondaries.positrons.fSlotManager;
+    const int slot = (*interactingQueue)[i];
+    // SlotManager &slotManager = *secondaries.positrons.fSlotManager;
 
     Track &currentTrack = electrons[slot];
     // the MCC vector is indexed by the logical volume id

@@ -39,8 +39,8 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
   constexpr unsigned short kStepsStuckKill = 25;
   int activeSize                           = active->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot      = (*active)[i];
-    auto &slotManager   = *secondaries.gammas.fSlotManager;
+    const int slot = (*active)[i];
+    // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
     // gammas[slot].currentSlot = slot;
@@ -183,8 +183,8 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
 {
   int activeSize = active->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot      = (*active)[i];
-    auto &slotManager   = *secondaries.gammas.fSlotManager;
+    const int slot = (*active)[i];
+    // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
     int lvolID = currentTrack.navState.GetLogicalId();
@@ -258,8 +258,8 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
   constexpr Precision kPushDistance = 1000 * vecgeom::kTolerance;
   int activeSize                    = relocatingQueue->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
-    const int slot      = (*relocatingQueue)[i];
-    auto &slotManager   = *secondaries.gammas.fSlotManager;
+    const int slot = (*relocatingQueue)[i];
+    // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
     int lvolID = currentTrack.navState.GetLogicalId();
@@ -396,8 +396,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
   int activeSize = interactingQueue->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
     // const int slot      = (*active)[i];
-    const int slot      = (*interactingQueue)[i];
-    auto &slotManager   = *secondaries.gammas.fSlotManager;
+    const int slot = (*interactingQueue)[i];
+    // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
     int lvolID                = currentTrack.navState.GetLogicalId();
@@ -562,8 +562,8 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
   int activeSize = interactingQueue->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
     // const int slot      = (*active)[i];
-    const int slot      = (*interactingQueue)[i];
-    auto &slotManager   = *secondaries.gammas.fSlotManager;
+    const int slot = (*interactingQueue)[i];
+    // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
     int lvolID                = currentTrack.navState.GetLogicalId();
@@ -703,8 +703,8 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
   int activeSize = interactingQueue->size();
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < activeSize; i += blockDim.x * gridDim.x) {
     // const int slot      = (*active)[i];
-    const int slot      = (*interactingQueue)[i];
-    auto &slotManager   = *secondaries.gammas.fSlotManager;
+    const int slot = (*interactingQueue)[i];
+    // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
     int lvolID                = currentTrack.navState.GetLogicalId();

@@ -200,9 +200,9 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, trackInfo.position, seed, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
-        static_cast<float>(trackInfo.properTime), trackInfo.weight, trackInfo.direction, trackInfo.eventId,
-        trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
+        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, seed, trackInfo.globalTime,
+        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.weight,
+        trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
     // track.currentSlot = slot;
     track.navState.Clear();
     track.navState       = trackinfo[i].navState;
@@ -225,6 +225,8 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fEkin[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fPos[slot] =
         tracksAndSlots.soaInjected[particleType]->fPos[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fDir[slot] =
+        tracksAndSlots.soaInjected[particleType]->fDir[injectionSlot];
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
@@ -296,9 +298,9 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].position[0]  = soaLeaks->fPos[trackSlot][0];
       fromDevice[idx].position[1]  = soaLeaks->fPos[trackSlot][1];
       fromDevice[idx].position[2]  = soaLeaks->fPos[trackSlot][2];
-      fromDevice[idx].direction[0] = track->dir[0];
-      fromDevice[idx].direction[1] = track->dir[1];
-      fromDevice[idx].direction[2] = track->dir[2];
+      fromDevice[idx].direction[0] = soaLeaks->fDir[trackSlot][0];
+      fromDevice[idx].direction[1] = soaLeaks->fDir[trackSlot][1];
+      fromDevice[idx].direction[2] = soaLeaks->fDir[trackSlot][2];
       fromDevice[idx].eKin         = soaLeaks->fEkin[trackSlot];
       // fromDevice[idx].eKin           = track->eKin;
       fromDevice[idx].globalTime     = track->globalTime;
@@ -638,6 +640,7 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fSafety, nSlot);
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
+  gpuMalloc(hostSoA.fDir, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }
@@ -1278,6 +1281,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             gpuState.hepEmBuffers_d.electronsHepEm, secondaries, electrons.queues.nextActive,
             electrons.queues.interactionQueues[4], electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
             returnAllSteps, returnLastStep);
+        // printf("IN SECONDARIES: %p\n", secondaries.electrons.fSoANextTracks);
+        // printf("PASSED TO ELECTRONS KERNEL: %p\n", electrons.soaNextTrack);
+        // cudaDeviceSynchronize();
         ElectronIonization<true, PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
             electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries,
             electrons.queues.nextActive, electrons.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps,
@@ -1296,6 +1302,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         COPCORE_CUDA_CHECK(cudaEventRecord(electrons.event, electrons.stream));
         COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, electrons.event, 0));
       }
+
+      // DEBUG
+      // cudaDeviceSynchronize();
 
       // *** POSITRONS ***
       {
@@ -1330,6 +1339,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
             gpuState.hepEmBuffers_d.positronsHepEm, secondaries, positrons.queues.nextActive,
             positrons.queues.interactionQueues[4], positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
             returnAllSteps, returnLastStep);
+        // printf("IN SECONDARIES: %p\n", secondaries.positrons.fSoANextTracks);
+        // printf("PASSED TO POSITRONS KERNEL: %p\n", positrons.soaNextTrack);
+        // cudaDeviceSynchronize();
         ElectronIonization<false, PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
             positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
             positrons.queues.nextActive, positrons.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps,
@@ -1357,6 +1369,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         COPCORE_CUDA_CHECK(cudaEventRecord(positrons.event, positrons.stream));
         COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, positrons.event, 0));
       }
+
+      // DEBUG
+      // cudaDeviceSynchronize();
 
       // *** GAMMAS ***
       {

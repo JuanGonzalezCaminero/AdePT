@@ -21,27 +21,34 @@ struct SoATrack {
   float *fSafety;
   vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
   vecgeom::Vector3D<Precision> *fPos;
-  // vecgeom::Vector3D<Precision> *fDir;
+  vecgeom::Vector3D<Precision> *fDir;
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
     fSafety[trackSlot] = 0.f;
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot].Set(pos[0], pos[1], pos[2]);
+    fDir[trackSlot].Set(dir[0], dir[1], dir[2]);
+
+    // printf("INSERTED dir (pointer): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
   }
 
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos, Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
+                            const vecgeom::Vector3D<Precision> &dir, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
     fSafety[trackSlot] = 0.f;
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot] = pos;
+    fDir[trackSlot] = dir;
+
+    // printf("INSERTED dir (reference): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
   }
 
   /// @brief Get recomputed cached safety ay a given track position
@@ -69,15 +76,6 @@ struct SoATrack {
     fSafety[trackSlot] = vecCore::math::Max(safe, 0.f);
   }
 
-  // Needed when passing vectors (in this case this function should receive a reference)
-  /// Construct a secondary from a parent track.
-  // template <typename... Args>
-  // __device__ void InitTrack(int trackIdx, double const eKin, Args...)
-  // {
-  //   // fRngState[trackIdx] = rngState;
-  //   fEkin[trackIdx] = eKin;
-  // }
-
   // __host__ __device__ double Uniform(int trackIdx) { return fRngState[trackIdx].Rndm(); }
 };
 
@@ -101,7 +99,7 @@ struct Track {
   float properTime{0.f};
 
   // vecgeom::Vector3D<Precision> pos; ///< track position
-  vecgeom::Vector3D<Precision> dir; ///< track direction
+  // vecgeom::Vector3D<Precision> dir; ///< track direction
   // vecgeom::Vector3D<float> safetyPos; ///< last position where the safety was computed
   // TODO: For better clarity in the split kernels, rename this to "stored safety" as opposed to the
   // safety we get from GetSafety(), which is computed in the moment
@@ -145,8 +143,8 @@ struct Track {
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
-  __device__ Track(double eKin, double const position[3], uint64_t rngSeed /*, double eKin*/, double globalTime,
-                   float localTime, float properTime, float weight, double const direction[3], unsigned int eventId,
+  __device__ Track(double eKin, double const position[3], double const direction[3], uint64_t rngSeed /*, double eKin*/,
+                   double globalTime, float localTime, float properTime, float weight, unsigned int eventId,
                    uint64_t trackId, uint64_t parentId, short threadId, unsigned short stepCounter)
       : /*eKin{eKin},*/ weight{weight}, globalTime{globalTime}, localTime{localTime}, properTime{properTime},
         eventId{eventId}, trackId{trackId}, parentId{parentId}, threadId{threadId}, stepCounter{stepCounter},
@@ -154,16 +152,16 @@ struct Track {
   {
     rngState.SetSeed(rngSeed);
     // pos        = {position[0], position[1], position[2]};
-    dir        = {direction[0], direction[1], direction[2]};
+    // dir        = {direction[0], direction[1], direction[2]};
     leakStatus = LeakStatus::NoLeak;
   }
 
   /// Construct a secondary from a parent track.
   /// NB: The caller is responsible to branch a new RNG state.
   __device__ Track(double eKin, const vecgeom::Vector3D<Precision> &parentPos,
-                   RanluxppDouble const &rng_state /*, double eKin*/, const vecgeom::Vector3D<Precision> &newDirection,
+                   const vecgeom::Vector3D<Precision> &newDirection, RanluxppDouble const &rng_state /*, double eKin*/,
                    const vecgeom::NavigationState &newNavState, const Track &parentTrack, const double globalTime)
-      : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, /*pos{parentPos},*/ dir{newDirection},
+      : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, /*pos{parentPos}, dir{newDirection},*/
         navState{newNavState}, originNavState{newNavState}, trackId{rngState.IntRndm64()}, eventId{parentTrack.eventId},
         parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, weight{parentTrack.weight}, stepCounter{0},
         looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
@@ -233,9 +231,9 @@ struct Track {
     // tdata.position[0]  = pos[0];
     // tdata.position[1]  = pos[1];
     // tdata.position[2]  = pos[2];
-    tdata.direction[0] = dir[0];
-    tdata.direction[1] = dir[1];
-    tdata.direction[2] = dir[2];
+    // tdata.direction[0] = dir[0];
+    // tdata.direction[1] = dir[1];
+    // tdata.direction[2] = dir[2];
     // TODO: Fix for sync mode
     // tdata.eKin           = eKin;
     tdata.globalTime     = globalTime;

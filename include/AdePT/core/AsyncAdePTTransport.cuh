@@ -200,9 +200,9 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, seed, trackInfo.globalTime,
-        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.weight,
-        trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
+        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, seed, trackInfo.globalTime,
+        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.eventId,
+        trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
     // track.currentSlot = slot;
     track.navState.Clear();
     track.navState       = trackinfo[i].navState;
@@ -227,6 +227,8 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fPos[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fDir[slot] =
         tracksAndSlots.soaInjected[particleType]->fDir[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fWeight[slot] =
+        tracksAndSlots.soaInjected[particleType]->fWeight[injectionSlot];
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
@@ -306,7 +308,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].globalTime     = track->globalTime;
       fromDevice[idx].localTime      = track->localTime;
       fromDevice[idx].properTime     = track->properTime;
-      fromDevice[idx].weight         = track->weight;
+      fromDevice[idx].weight         = soaLeaks->fWeight[trackSlot];
       fromDevice[idx].pdg            = pdg;
       fromDevice[idx].eventId        = track->eventId;
       fromDevice[idx].threadId       = track->threadId;
@@ -638,6 +640,7 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   };
   gpuMalloc(hostSoA.fEkin, nSlot);
   gpuMalloc(hostSoA.fSafety, nSlot);
+  gpuMalloc(hostSoA.fWeight, nSlot);
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
   gpuMalloc(hostSoA.fDir, nSlot);

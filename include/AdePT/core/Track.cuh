@@ -19,13 +19,14 @@ struct SoATrack {
   // uint fNSlot;
   double *fEkin;
   float *fSafety;
+  float *fWeight;
   vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -33,13 +34,15 @@ struct SoATrack {
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot].Set(pos[0], pos[1], pos[2]);
     fDir[trackSlot].Set(dir[0], dir[1], dir[2]);
+    fWeight[trackSlot] = weight;
 
     // printf("INSERTED dir (pointer): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
   }
 
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
-                            const vecgeom::Vector3D<Precision> &dir, Args...)
+  __device__ void InitTrack(int trackSlot, SoATrack *parentSoATrack, double eKin,
+                            const vecgeom::Vector3D<Precision> &pos, const vecgeom::Vector3D<Precision> &dir,
+                            int parentTrackSlot, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -47,6 +50,8 @@ struct SoATrack {
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot] = pos;
     fDir[trackSlot] = dir;
+
+    fWeight[trackSlot] = parentSoATrack->fWeight[parentTrackSlot];
 
     // printf("INSERTED dir (reference): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
   }
@@ -88,7 +93,7 @@ struct Track {
   // double eKin{0.};
   double globalTime{0.};
 
-  float weight{0.};
+  // float weight{0.};
   float numIALeft[4]{-1.f, -1.f, -1.f, -1.f};
   // default values taken from G4HepEmMSCTrackData.hh
   float initialRange{1.0e+21};
@@ -143,10 +148,11 @@ struct Track {
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
-  __device__ Track(double eKin, double const position[3], double const direction[3], uint64_t rngSeed /*, double eKin*/,
-                   double globalTime, float localTime, float properTime, float weight, unsigned int eventId,
-                   uint64_t trackId, uint64_t parentId, short threadId, unsigned short stepCounter)
-      : /*eKin{eKin},*/ weight{weight}, globalTime{globalTime}, localTime{localTime}, properTime{properTime},
+  __device__ Track(double eKin, double const position[3], double const direction[3], float weight,
+                   uint64_t rngSeed /*, double eKin*/, double globalTime, float localTime, float properTime,
+                   unsigned int eventId, uint64_t trackId, uint64_t parentId, short threadId,
+                   unsigned short stepCounter)
+      : /*eKin{eKin},*/ /*weight{weight},*/ globalTime{globalTime}, localTime{localTime}, properTime{properTime},
         eventId{eventId}, trackId{trackId}, parentId{parentId}, threadId{threadId}, stepCounter{stepCounter},
         looperCounter{0}, zeroStepCounter{0}
   {
@@ -159,11 +165,12 @@ struct Track {
   /// Construct a secondary from a parent track.
   /// NB: The caller is responsible to branch a new RNG state.
   __device__ Track(double eKin, const vecgeom::Vector3D<Precision> &parentPos,
-                   const vecgeom::Vector3D<Precision> &newDirection, RanluxppDouble const &rng_state /*, double eKin*/,
-                   const vecgeom::NavigationState &newNavState, const Track &parentTrack, const double globalTime)
+                   const vecgeom::Vector3D<Precision> &newDirection, int parentTrackSlot,
+                   RanluxppDouble const &rng_state /*, double eKin*/, const vecgeom::NavigationState &newNavState,
+                   const Track &parentTrack, const double globalTime)
       : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, /*pos{parentPos}, dir{newDirection},*/
         navState{newNavState}, originNavState{newNavState}, trackId{rngState.IntRndm64()}, eventId{parentTrack.eventId},
-        parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, weight{parentTrack.weight}, stepCounter{0},
+        parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, /*weight{parentTrack.weight},*/ stepCounter{0},
         looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
@@ -241,9 +248,9 @@ struct Track {
     tdata.properTime     = properTime;
     tdata.navState       = navState;
     tdata.originNavState = originNavState;
-    tdata.weight         = weight;
-    tdata.leakStatus     = leakStatus;
-    tdata.stepCounter    = stepCounter;
+    // tdata.weight         = weight;
+    tdata.leakStatus  = leakStatus;
+    tdata.stepCounter = stepCounter;
   }
 };
 #endif

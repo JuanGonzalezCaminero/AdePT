@@ -66,7 +66,7 @@ public:
   __device__ Track &InitTrack(SlotManager::value_type slot, Ts &&...args)
   {
     // Initialize the values in the SoA storage
-    fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
+    fSoANextTracks->InitTrack(slot, fSoATracks, std::forward<Ts>(args)...);
     // Init the main track
     return *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
     // auto &track = *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
@@ -92,7 +92,7 @@ public:
     const auto slot = NextSlot();
     fActiveQueue->push_back(slot);
     // Initialize the values in the SoA storage
-    fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
+    // fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
     auto &track = InitTrack(slot, std::forward<Ts>(args)...);
 

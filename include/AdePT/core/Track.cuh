@@ -23,6 +23,8 @@ struct SoATrack {
   vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
+  vecgeom::NavigationState *fNavState;
+  vecgeom::NavigationState *fOriginNavState;
   uint64_t *fParentId;
   uint64_t *fTrackId;
   unsigned int *fEventId;
@@ -51,20 +53,22 @@ struct SoATrack {
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
                             const vecgeom::Vector3D<Precision> &dir, SoATrack *parentSoATrack, int parentTrackSlot,
-                            RanluxppDouble const &rngState, Args...)
+                            RanluxppDouble const &rngState, const vecgeom::NavigationState &newNavState, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
     fSafety[trackSlot] = 0.f;
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
-    fPos[trackSlot]      = pos;
-    fDir[trackSlot]      = dir;
-    fRngState[trackSlot] = rngState;
-    fWeight[trackSlot]   = parentSoATrack->fWeight[parentTrackSlot];
-    fParentId[trackSlot] = parentSoATrack->fParentId[parentTrackSlot];
-    fTrackId[trackSlot]  = fRngState[trackSlot].IntRndm64();
-    fEventId[trackSlot]  = parentSoATrack->fEventId[parentTrackSlot];
-    fThreadId[trackSlot] = parentSoATrack->fThreadId[parentTrackSlot];
+    fPos[trackSlot]            = pos;
+    fDir[trackSlot]            = dir;
+    fNavState[trackSlot]       = newNavState;
+    fOriginNavState[trackSlot] = newNavState;
+    fWeight[trackSlot]         = parentSoATrack->fWeight[parentTrackSlot];
+    fRngState[trackSlot]       = rngState;
+    fParentId[trackSlot]       = parentSoATrack->fParentId[parentTrackSlot];
+    fTrackId[trackSlot]        = fRngState[trackSlot].IntRndm64();
+    fEventId[trackSlot]        = parentSoATrack->fEventId[parentTrackSlot];
+    fThreadId[trackSlot]       = parentSoATrack->fThreadId[parentTrackSlot];
   }
 
   /// @brief Get recomputed cached safety ay a given track position
@@ -120,8 +124,8 @@ struct Track {
   // TODO: For better clarity in the split kernels, rename this to "stored safety" as opposed to the
   // safety we get from GetSafety(), which is computed in the moment
   // float safety{0.f};                       ///< last computed safety value
-  vecgeom::NavigationState navState;       ///< current navigation state
-  vecgeom::NavigationState originNavState; ///< navigation state where the vertex was created
+  // vecgeom::NavigationState navState;       ///< current navigation state
+  // vecgeom::NavigationState originNavState; ///< navigation state where the vertex was created
 
 #ifdef USE_SPLIT_KERNELS
   // Variables used to store track info needed for scoring
@@ -177,8 +181,8 @@ struct Track {
                    const vecgeom::Vector3D<Precision> &newDirection, SoATrack *parentSoATrack, int parentTrackSlot,
                    RanluxppDouble const &rng_state, const vecgeom::NavigationState &newNavState,
                    const Track &parentTrack, const double globalTime)
-      : globalTime{globalTime}, navState{newNavState}, originNavState{newNavState}, stepCounter{0}, looperCounter{0},
-        zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
+      : globalTime{globalTime}, /*navState{newNavState}, originNavState{newNavState},*/ stepCounter{0},
+        looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
 
@@ -195,7 +199,8 @@ struct Track {
     //        "%.19f} remain_safe %g loop %u\n| | state: ",
     //        eventId, parentId, label, trackId, stepCounter, eKin / copcore::units::MeV, pos[0], pos[1], pos[2],
     //        dir[0], dir[1], dir[2], GetSafety(pos), looperCounter);
-    navState.Print();
+    // navState.Print();
+    ;
   }
 
   // __host__ __device__ double Uniform() { return rngState.Rndm(); }
@@ -218,10 +223,10 @@ struct Track {
     // this->pos = parentPos;
     // this->safetyPos.Set(0.f, 0.f, 0.f);
     // this->safety   = 0.0f;
-    this->navState = parentNavState;
+    // this->navState = parentNavState;
 
     // Set the origin for this track
-    this->originNavState = parentNavState;
+    // this->originNavState = parentNavState;
 
     // Caller is responsible to set the weight of the track
 
@@ -250,11 +255,11 @@ struct Track {
     // tdata.direction[2] = dir[2];
     // TODO: Fix for sync mode
     // tdata.eKin           = eKin;
-    tdata.globalTime     = globalTime;
-    tdata.localTime      = localTime;
-    tdata.properTime     = properTime;
-    tdata.navState       = navState;
-    tdata.originNavState = originNavState;
+    tdata.globalTime = globalTime;
+    tdata.localTime  = localTime;
+    tdata.properTime = properTime;
+    // tdata.navState       = navState;
+    // tdata.originNavState = originNavState;
     // tdata.weight         = weight;
     tdata.leakStatus  = leakStatus;
     tdata.stepCounter = stepCounter;

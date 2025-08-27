@@ -203,10 +203,10 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
         slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, seed, trackInfo.parentId,
         trackInfo.trackId, trackInfo.eventId, trackInfo.threadId, trackInfo.globalTime,
         static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.stepCounter);
-    // track.currentSlot = slot;
-    track.navState.Clear();
-    track.navState       = trackinfo[i].navState;
-    track.originNavState = trackinfo[i].originNavState;
+    generator->fSoAInjected->fNavState[slot].Clear();
+    generator->fSoAInjected->fNavState[slot]       = trackinfo[i].navState;
+    generator->fSoAInjected->fOriginNavState[slot] = trackinfo[i].originNavState;
+
     toBeEnqueued->push_back(QueueIndexPair{slot, queueIndex});
   }
 }
@@ -227,6 +227,10 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fPos[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fDir[slot] =
         tracksAndSlots.soaInjected[particleType]->fDir[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fNavState[slot] =
+        tracksAndSlots.soaInjected[particleType]->fNavState[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fOriginNavState[slot] =
+        tracksAndSlots.soaInjected[particleType]->fOriginNavState[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fWeight[slot] =
         tracksAndSlots.soaInjected[particleType]->fWeight[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fRngState[slot] =
@@ -323,8 +327,8 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].pdg            = pdg;
       fromDevice[idx].eventId        = soaLeaks->fEventId[trackSlot];
       fromDevice[idx].threadId       = soaLeaks->fThreadId[trackSlot];
-      fromDevice[idx].navState       = track->navState;
-      fromDevice[idx].originNavState = track->originNavState;
+      fromDevice[idx].navState       = soaLeaks->fNavState[trackSlot];
+      fromDevice[idx].originNavState = soaLeaks->fOriginNavState[trackSlot];
       fromDevice[idx].leakStatus     = track->leakStatus;
       fromDevice[idx].parentId       = soaLeaks->fParentId[trackSlot];
       fromDevice[idx].trackId        = soaLeaks->fTrackId[trackSlot];
@@ -657,6 +661,8 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
   gpuMalloc(hostSoA.fDir, nSlot);
+  gpuMalloc(hostSoA.fNavState, nSlot);
+  gpuMalloc(hostSoA.fOriginNavState, nSlot);
   gpuMalloc(hostSoA.fParentId, nSlot);
   gpuMalloc(hostSoA.fTrackId, nSlot);
   gpuMalloc(hostSoA.fEventId, nSlot);

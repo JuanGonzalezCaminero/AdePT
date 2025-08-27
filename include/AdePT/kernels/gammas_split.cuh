@@ -45,7 +45,7 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
 
     // gammas[slot].currentSlot = slot;
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    int lvolID                = soaTrack->fNavState[slot].GetLogicalId();
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
 
     currentTrack.preStepEKin = soaTrack->fEkin[slot];
@@ -131,7 +131,7 @@ __global__ void GammaPropagation(Track *gammas, SoATrack *soaTrack, G4HepEmGamma
     const int slot      = (*active)[i];
     Track &currentTrack = gammas[slot];
 
-    int lvolID = currentTrack.navState.GetLogicalId();
+    int lvolID = soaTrack->fNavState[slot].GetLogicalId();
 
     G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
     G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
@@ -141,11 +141,11 @@ __global__ void GammaPropagation(Track *gammas, SoATrack *soaTrack, G4HepEmGamma
     long hitsurf_index = -1;
     currentTrack.geometryStepLength =
         AdePTNavigator::ComputeStepAndNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], theTrack->GetGStepLength(),
-                                                 currentTrack.navState, currentTrack.nextState, hitsurf_index);
+                                                 soaTrack->fNavState[slot], currentTrack.nextState, hitsurf_index);
 #else
     currentTrack.geometryStepLength =
         AdePTNavigator::ComputeStepAndNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], theTrack->GetGStepLength(),
-                                                 currentTrack.navState, currentTrack.nextState, kPushDistance);
+                                                 soaTrack->fNavState[slot], currentTrack.nextState, kPushDistance);
 #endif
     //  printf("pvol=%d  step=%g  onboundary=%d  pos={%g, %g, %g}  dir={%g, %g, %g}\n", navState.TopId(),
     //  geometryStepLength,
@@ -162,7 +162,7 @@ __global__ void GammaPropagation(Track *gammas, SoATrack *soaTrack, G4HepEmGamma
     // Set boundary state in navState so the next step and secondaries get the
     // correct information (navState = nextState only if relocated
     // in case of a boundary; see below)
-    currentTrack.navState.SetBoundaryState(currentTrack.nextState.IsOnBoundary());
+    soaTrack->fNavState[slot].SetBoundaryState(currentTrack.nextState.IsOnBoundary());
 
     // Propagate information from geometrical step to G4HepEm.
     theTrack->SetGStepLength(currentTrack.geometryStepLength);
@@ -188,7 +188,7 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
     // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID = currentTrack.navState.GetLogicalId();
+    int lvolID = soaTrack->fNavState[slot].GetLogicalId();
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
@@ -263,7 +263,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
     // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID = currentTrack.navState.GetLogicalId();
+    int lvolID = soaTrack->fNavState[slot].GetLogicalId();
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
@@ -328,7 +328,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  currentTrack.geometryStepLength, // Step length
                                  0,                               // Total Edep
                                  soaTrack->fWeight[slot],         // Track weight
-                                 currentTrack.navState,           // Pre-step point navstate
+                                 soaTrack->fNavState[slot],       // Pre-step point navstate
                                  currentTrack.preStepPos,         // Pre-step point position
                                  currentTrack.preStepDir,         // Pre-step point momentum direction
                                  currentTrack.preStepEKin,        // Pre-step point kinetic energy
@@ -343,10 +343,10 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  currentTrack.stepCounter); // stepcounter
 
       // Move to the next boundary.
-      currentTrack.navState = currentTrack.nextState;
+      soaTrack->fNavState[slot] = currentTrack.nextState;
       // printf("  -> pvol=%d pos={%g, %g, %g} \n", navState.TopId(), pos[0], pos[1], pos[2]);
       //  Check if the next volume belongs to the GPU region and push it to the appropriate queue
-      const int nextlvolID          = currentTrack.navState.GetLogicalId();
+      const int nextlvolID          = soaTrack->fNavState[slot].GetLogicalId();
       VolAuxData const &nextauxData = AsyncAdePT::gVolAuxData[nextlvolID];
       if (nextauxData.fGPUregion > 0) {
         survive();
@@ -370,7 +370,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  currentTrack.geometryStepLength, // Step length
                                  0,                               // Total Edep
                                  soaTrack->fWeight[slot],         // Track weight
-                                 currentTrack.navState,           // Pre-step point navstate
+                                 soaTrack->fNavState[slot],       // Pre-step point navstate
                                  currentTrack.preStepPos,         // Pre-step point position
                                  currentTrack.preStepDir,         // Pre-step point momentum direction
                                  currentTrack.preStepEKin,        // Pre-step point kinetic energy
@@ -402,7 +402,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    int lvolID                = soaTrack->fNavState[slot].GetLogicalId();
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
@@ -464,7 +464,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
       Track &electron = secondaries.electrons.NextTrack(
           elKinEnergy, soaTrack->fPos[slot],
           vecgeom::Vector3D<Precision>{dirSecondaryEl[0], dirSecondaryEl[1], dirSecondaryEl[2]}, soaTrack, slot, newRNG,
-          currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -472,20 +472,20 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             userScoring, secondaries.electrons.fSoANextTracks->fTrackId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
             /*CreatorProcessId*/ short(0),
-            /* electron*/ 0,                                                     // Particle type
-            0,                                                                   // Step length
-            0,                                                                   // Total Edep
-            secondaries.electrons.fSoANextTracks->fWeight[electron.currentSlot], // Track weight
-            electron.navState,                                                   // Pre-step point navstate
-            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],    // Pre-step point position
-            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],    // Pre-step point momentum direction
-            elKinEnergy,                                                         // Pre-step point kinetic energy
-            electron.navState,                                                   // Post-step point navstate
-            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],    // Post-step point position
-            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],    // Post-step point momentum direction
-            elKinEnergy,                                                         // Post-step point kinetic energy
-            electron.globalTime,                                                 // global time
-            0.,                                                                  // local time
+            /* electron*/ 0,                                                       // Particle type
+            0,                                                                     // Step length
+            0,                                                                     // Total Edep
+            secondaries.electrons.fSoANextTracks->fWeight[electron.currentSlot],   // Track weight
+            secondaries.electrons.fSoANextTracks->fNavState[electron.currentSlot], // Pre-step point navstate
+            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Pre-step point position
+            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Pre-step point momentum direction
+            elKinEnergy,                                                           // Pre-step point kinetic energy
+            secondaries.electrons.fSoANextTracks->fNavState[electron.currentSlot], // Post-step point navstate
+            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Post-step point position
+            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Post-step point momentum direction
+            elKinEnergy,                                                           // Post-step point kinetic energy
+            electron.globalTime,                                                   // global time
+            0.,                                                                    // local time
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -500,7 +500,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
       Track &positron = secondaries.positrons.NextTrack(
           posKinEnergy, soaTrack->fPos[slot],
           vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]}, soaTrack, slot,
-          soaTrack->fRngState[slot], currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack->fRngState[slot], soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -508,20 +508,20 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             userScoring, secondaries.positrons.fSoANextTracks->fTrackId[positron.currentSlot],
             secondaries.positrons.fSoANextTracks->fParentId[positron.currentSlot],
             /*CreatorProcessId*/ short(0),
-            /* positron*/ 1,                                                     // Particle type
-            0,                                                                   // Step length
-            0,                                                                   // Total Edep
-            secondaries.positrons.fSoANextTracks->fWeight[positron.currentSlot], // Track weight
-            positron.navState,                                                   // Pre-step point navstate
-            secondaries.positrons.fSoANextTracks->fPos[positron.currentSlot],    // Pre-step point position
-            secondaries.positrons.fSoANextTracks->fDir[positron.currentSlot],    // Pre-step point momentum direction
-            posKinEnergy,                                                        // Pre-step point kinetic energy
-            positron.navState,                                                   // Post-step point navstate
-            secondaries.positrons.fSoANextTracks->fPos[positron.currentSlot],    // Post-step point position
-            secondaries.positrons.fSoANextTracks->fDir[positron.currentSlot],    // Post-step point momentum direction
-            posKinEnergy,                                                        // Post-step point kinetic energy
-            positron.globalTime,                                                 // global time
-            0.,                                                                  // local time
+            /* positron*/ 1,                                                       // Particle type
+            0,                                                                     // Step length
+            0,                                                                     // Total Edep
+            secondaries.positrons.fSoANextTracks->fWeight[positron.currentSlot],   // Track weight
+            secondaries.positrons.fSoANextTracks->fNavState[positron.currentSlot], // Pre-step point navstate
+            secondaries.positrons.fSoANextTracks->fPos[positron.currentSlot],      // Pre-step point position
+            secondaries.positrons.fSoANextTracks->fDir[positron.currentSlot],      // Pre-step point momentum direction
+            posKinEnergy,                                                          // Pre-step point kinetic energy
+            secondaries.positrons.fSoANextTracks->fNavState[positron.currentSlot], // Post-step point navstate
+            secondaries.positrons.fSoANextTracks->fPos[positron.currentSlot],      // Post-step point position
+            secondaries.positrons.fSoANextTracks->fDir[positron.currentSlot],      // Post-step point momentum direction
+            posKinEnergy,                                                          // Post-step point kinetic energy
+            positron.globalTime,                                                   // global time
+            0.,                                                                    // local time
             secondaries.positrons.fSoANextTracks->fEventId[positron.currentSlot],
             secondaries.positrons.fSoANextTracks->fThreadId[positron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -544,7 +544,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
                                currentTrack.geometryStepLength, // Step length
                                edep,                            // Total Edep
                                soaTrack->fWeight[slot],         // Track weight
-                               currentTrack.navState,           // Pre-step point navstate
+                               soaTrack->fNavState[slot],       // Pre-step point navstate
                                currentTrack.preStepPos,         // Pre-step point position
                                currentTrack.preStepDir,         // Pre-step point momentum direction
                                currentTrack.preStepEKin,        // Pre-step point kinetic energy
@@ -574,7 +574,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
     // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    int lvolID                = soaTrack->fNavState[slot].GetLogicalId();
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
@@ -629,7 +629,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
       // Create a secondary electron and sample/compute directions.
       Track &electron = secondaries.electrons.NextTrack(
           energyEl, soaTrack->fPos[slot], soaTrack->fEkin[slot] * soaTrack->fDir[slot] - newEnergyGamma * newDirGamma,
-          soaTrack, slot, newRNG, currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack, slot, newRNG, soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
       secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot].Normalize();
 
       // if tracking or stepping action is called, return initial step
@@ -638,20 +638,20 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
             userScoring, secondaries.electrons.fSoANextTracks->fTrackId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
             /*CreatorProcessId*/ short(1),
-            /* electron*/ 0,                                                     // Particle type
-            0,                                                                   // Step length
-            0,                                                                   // Total Edep
-            secondaries.electrons.fSoANextTracks->fWeight[electron.currentSlot], // Track weight
-            electron.navState,                                                   // Pre-step point navstate
-            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],    // Pre-step point position
-            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],    // Pre-step point momentum direction
-            energyEl,                                                            // Pre-step point kinetic energy
-            electron.navState,                                                   // Post-step point navstate
-            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],    // Post-step point position
-            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],    // Post-step point momentum direction
-            energyEl,                                                            // Post-step point kinetic energy
-            electron.globalTime,                                                 // global time
-            0.,                                                                  // local time
+            /* electron*/ 0,                                                       // Particle type
+            0,                                                                     // Step length
+            0,                                                                     // Total Edep
+            secondaries.electrons.fSoANextTracks->fWeight[electron.currentSlot],   // Track weight
+            secondaries.electrons.fSoANextTracks->fNavState[electron.currentSlot], // Pre-step point navstate
+            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Pre-step point position
+            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Pre-step point momentum direction
+            energyEl,                                                              // Pre-step point kinetic energy
+            secondaries.electrons.fSoANextTracks->fNavState[electron.currentSlot], // Post-step point navstate
+            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Post-step point position
+            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Post-step point momentum direction
+            energyEl,                                                              // Post-step point kinetic energy
+            electron.globalTime,                                                   // global time
+            0.,                                                                    // local time
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -687,7 +687,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
                                currentTrack.geometryStepLength, // Step length
                                edep,                            // Total Edep
                                soaTrack->fWeight[slot],         // Track weight
-                               currentTrack.navState,           // Pre-step point navstate
+                               soaTrack->fNavState[slot],       // Pre-step point navstate
                                currentTrack.preStepPos,         // Pre-step point position
                                currentTrack.preStepDir,         // Pre-step point momentum direction
                                currentTrack.preStepEKin,        // Pre-step point kinetic energy
@@ -718,7 +718,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
     // auto &slotManager   = *secondaries.gammas.fSlotManager;
     Track &currentTrack = gammas[slot];
 
-    int lvolID                = currentTrack.navState.GetLogicalId();
+    int lvolID                = soaTrack->fNavState[slot].GetLogicalId();
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
     bool isLastStep           = true;
 
@@ -772,7 +772,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
       Track &electron = secondaries.electrons.NextTrack(
           photoElecE, soaTrack->fPos[slot],
           vecgeom::Vector3D<Precision>{dirPhotoElec[0], dirPhotoElec[1], dirPhotoElec[2]}, soaTrack, slot, newRNG,
-          currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -780,20 +780,20 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
             userScoring, secondaries.electrons.fSoANextTracks->fTrackId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
             /*CreatorProcessId*/ short(2),
-            /* electron*/ 0,                                                     // Particle type
-            0,                                                                   // Step length
-            0,                                                                   // Total Edep
-            secondaries.electrons.fSoANextTracks->fWeight[electron.currentSlot], // Track weight
-            electron.navState,                                                   // Pre-step point navstate
-            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],    // Pre-step point position
-            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],    // Pre-step point momentum direction
-            photoElecE,                                                          // Pre-step point kinetic energy
-            electron.navState,                                                   // Post-step point navstate
-            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],    // Post-step point position
-            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],    // Post-step point momentum direction
-            photoElecE,                                                          // Post-step point kinetic energy
-            electron.globalTime,                                                 // global time
-            0.,                                                                  // local time
+            /* electron*/ 0,                                                       // Particle type
+            0,                                                                     // Step length
+            0,                                                                     // Total Edep
+            secondaries.electrons.fSoANextTracks->fWeight[electron.currentSlot],   // Track weight
+            secondaries.electrons.fSoANextTracks->fNavState[electron.currentSlot], // Pre-step point navstate
+            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Pre-step point position
+            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Pre-step point momentum direction
+            photoElecE,                                                            // Pre-step point kinetic energy
+            secondaries.electrons.fSoANextTracks->fNavState[electron.currentSlot], // Post-step point navstate
+            secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Post-step point position
+            secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Post-step point momentum direction
+            photoElecE,                                                            // Post-step point kinetic energy
+            electron.globalTime,                                                   // global time
+            0.,                                                                    // local time
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -819,7 +819,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
                                currentTrack.geometryStepLength, // Step length
                                edep,                            // Total Edep
                                soaTrack->fWeight[slot],         // Track weight
-                               currentTrack.navState,           // Pre-step point navstate
+                               soaTrack->fNavState[slot],       // Pre-step point navstate
                                currentTrack.preStepPos,         // Pre-step point position
                                currentTrack.preStepDir,         // Pre-step point momentum direction
                                currentTrack.preStepEKin,        // Pre-step point kinetic energy

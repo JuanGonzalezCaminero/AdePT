@@ -19,19 +19,19 @@ struct SoATrack {
   double *fEkin;
   float *fSafety;
   float *fWeight;
+  RanluxppDouble *fRngState;
   vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
-  short *fThreadId;
   uint64_t *fParentId;
-  unsigned int *fEventId;
-  RanluxppDouble *fRngState;
   uint64_t *fTrackId;
+  unsigned int *fEventId;
+  short *fThreadId;
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight,
-                            short threadId, uint64_t parentId, unsigned int eventId, uint64_t rngSeed, uint64_t trackId,
+                            uint64_t rngSeed, uint64_t parentId, uint64_t trackId, unsigned int eventId, short threadId,
                             Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
@@ -40,12 +40,12 @@ struct SoATrack {
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot].Set(pos[0], pos[1], pos[2]);
     fDir[trackSlot].Set(dir[0], dir[1], dir[2]);
-    fWeight[trackSlot]   = weight;
-    fThreadId[trackSlot] = threadId;
-    fParentId[trackSlot] = parentId;
-    fEventId[trackSlot]  = eventId;
-    fTrackId[trackSlot]  = trackId;
+    fWeight[trackSlot] = weight;
     fRngState[trackSlot].SetSeed(rngSeed);
+    fParentId[trackSlot] = parentId;
+    fTrackId[trackSlot]  = trackId;
+    fEventId[trackSlot]  = eventId;
+    fThreadId[trackSlot] = threadId;
   }
 
   template <typename... Args>
@@ -57,16 +57,14 @@ struct SoATrack {
     fEkin[trackSlot]   = eKin;
     fSafety[trackSlot] = 0.f;
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
-    fPos[trackSlot] = pos;
-    fDir[trackSlot] = dir;
-
+    fPos[trackSlot]      = pos;
+    fDir[trackSlot]      = dir;
     fRngState[trackSlot] = rngState;
-
-    fTrackId[trackSlot]  = fRngState[trackSlot].IntRndm64();
     fWeight[trackSlot]   = parentSoATrack->fWeight[parentTrackSlot];
-    fThreadId[trackSlot] = parentSoATrack->fThreadId[parentTrackSlot];
     fParentId[trackSlot] = parentSoATrack->fParentId[parentTrackSlot];
+    fTrackId[trackSlot]  = fRngState[trackSlot].IntRndm64();
     fEventId[trackSlot]  = parentSoATrack->fEventId[parentTrackSlot];
+    fThreadId[trackSlot] = parentSoATrack->fThreadId[parentTrackSlot];
   }
 
   /// @brief Get recomputed cached safety ay a given track position
@@ -161,8 +159,8 @@ struct Track {
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
-  __device__ Track(double eKin, double const position[3], double const direction[3], float weight, short threadId,
-                   uint64_t parentId, unsigned int eventId, uint64_t rngSeed, uint64_t trackId, double globalTime,
+  __device__ Track(double eKin, double const position[3], double const direction[3], float weight, uint64_t rngSeed,
+                   uint64_t parentId, uint64_t trackId, unsigned int eventId, short threadId, double globalTime,
                    float localTime, float properTime, unsigned short stepCounter)
       : globalTime{globalTime}, localTime{localTime}, properTime{properTime}, stepCounter{stepCounter},
         looperCounter{0}, zeroStepCounter{0}

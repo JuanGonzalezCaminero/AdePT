@@ -200,8 +200,8 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, trackInfo.threadId,
-        trackInfo.parentId, trackInfo.eventId, seed, trackInfo.trackId, trackInfo.globalTime,
+        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, seed, trackInfo.parentId,
+        trackInfo.trackId, trackInfo.eventId, trackInfo.threadId, trackInfo.globalTime,
         static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.stepCounter);
     // track.currentSlot = slot;
     track.navState.Clear();
@@ -229,16 +229,17 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fDir[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fWeight[slot] =
         tracksAndSlots.soaInjected[particleType]->fWeight[injectionSlot];
-    tracksAndSlots.soaNextTracks[particleType]->fThreadId[slot] =
-        tracksAndSlots.soaInjected[particleType]->fThreadId[injectionSlot];
-    tracksAndSlots.soaNextTracks[particleType]->fParentId[slot] =
-        tracksAndSlots.soaInjected[particleType]->fParentId[injectionSlot];
-    tracksAndSlots.soaNextTracks[particleType]->fEventId[slot] =
-        tracksAndSlots.soaInjected[particleType]->fEventId[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fRngState[slot] =
         tracksAndSlots.soaInjected[particleType]->fRngState[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fParentId[slot] =
+        tracksAndSlots.soaInjected[particleType]->fParentId[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fTrackId[slot] =
         tracksAndSlots.soaInjected[particleType]->fTrackId[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fEventId[slot] =
+        tracksAndSlots.soaInjected[particleType]->fEventId[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fThreadId[slot] =
+        tracksAndSlots.soaInjected[particleType]->fThreadId[injectionSlot];
+
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
@@ -652,14 +653,14 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fEkin, nSlot);
   gpuMalloc(hostSoA.fSafety, nSlot);
   gpuMalloc(hostSoA.fWeight, nSlot);
+  gpuMalloc(hostSoA.fRngState, nSlot);
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
   gpuMalloc(hostSoA.fDir, nSlot);
-  gpuMalloc(hostSoA.fThreadId, nSlot);
   gpuMalloc(hostSoA.fParentId, nSlot);
-  gpuMalloc(hostSoA.fEventId, nSlot);
-  gpuMalloc(hostSoA.fRngState, nSlot);
   gpuMalloc(hostSoA.fTrackId, nSlot);
+  gpuMalloc(hostSoA.fEventId, nSlot);
+  gpuMalloc(hostSoA.fThreadId, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }

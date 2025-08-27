@@ -200,9 +200,9 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, seed, trackInfo.globalTime,
-        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.eventId,
-        trackInfo.trackId, trackInfo.parentId, trackInfo.threadId, trackInfo.stepCounter);
+        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, trackInfo.threadId, seed,
+        trackInfo.globalTime, static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime),
+        trackInfo.eventId, trackInfo.trackId, trackInfo.parentId, trackInfo.stepCounter);
     // track.currentSlot = slot;
     track.navState.Clear();
     track.navState       = trackinfo[i].navState;
@@ -229,6 +229,8 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fDir[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fWeight[slot] =
         tracksAndSlots.soaInjected[particleType]->fWeight[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fThreadId[slot] =
+        tracksAndSlots.soaInjected[particleType]->fThreadId[injectionSlot];
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
@@ -311,7 +313,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].weight         = soaLeaks->fWeight[trackSlot];
       fromDevice[idx].pdg            = pdg;
       fromDevice[idx].eventId        = track->eventId;
-      fromDevice[idx].threadId       = track->threadId;
+      fromDevice[idx].threadId       = soaLeaks->fThreadId[trackSlot];
       fromDevice[idx].navState       = track->navState;
       fromDevice[idx].originNavState = track->originNavState;
       fromDevice[idx].leakStatus     = track->leakStatus;
@@ -427,8 +429,8 @@ __global__ void CountCurrentPopulation(AllParticleQueues all, Stats *stats, Trac
 
   for (unsigned int particleType = blockIdx.x; particleType < ParticleType::NumParticleTypes;
        particleType += gridDim.x) {
-    Track const *const tracks   = tracksAndSlots.tracks[particleType];
-    adept::MParray const *queue = all.queues[particleType].initiallyActive;
+    SoATrack const *const soaTrack = tracksAndSlots.soaTracks[particleType];
+    adept::MParray const *queue    = all.queues[particleType].initiallyActive;
 
     for (unsigned int i = threadIdx.x; i < N; i += blockDim.x)
       sharedCount[i] = 0;
@@ -438,7 +440,7 @@ __global__ void CountCurrentPopulation(AllParticleQueues all, Stats *stats, Trac
     const auto end = queue->size();
     for (unsigned int i = threadIdx.x; i < end; i += blockDim.x) {
       const auto slot     = (*queue)[i];
-      const auto threadId = tracks[slot].threadId;
+      const auto threadId = soaTrack->fThreadId[slot];
       atomicAdd(sharedCount + threadId, 1u);
     }
 
@@ -461,13 +463,14 @@ __global__ void CountLeakedTracks(AllParticleQueues all, Stats *stats, TracksAnd
   for (unsigned int queueIndex = blockIdx.x; queueIndex < nQueue; queueIndex += gridDim.x) {
     const auto particleType =
         queueIndex < ParticleType::NumParticleTypes ? queueIndex : queueIndex - ParticleType::NumParticleTypes;
-    Track const *const leaks = tracksAndSlots.leaks[particleType];
+    // Track const *const leaks = tracksAndSlots.leaks[particleType];
+    SoATrack *const soaLeaks = tracksAndSlots.soaLeaks[particleType];
     auto const queue = queueIndex < ParticleType::NumParticleTypes ? all.queues[particleType].leakedTracksCurrent
                                                                    : all.queues[particleType].leakedTracksNext;
     const auto size  = queue->size();
     for (unsigned int i = threadIdx.x; i < size; i += blockDim.x) {
       const auto slot     = (*queue)[i];
-      const auto threadId = leaks[slot].threadId;
+      const auto threadId = soaLeaks->fThreadId[slot];
       atomicAdd(stats->perEventLeaked + threadId, 1u);
     }
 
@@ -644,6 +647,7 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
   gpuMalloc(hostSoA.fDir, nSlot);
+  gpuMalloc(hostSoA.fThreadId, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }
@@ -1175,6 +1179,7 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
           {electrons.nextTracks, positrons.nextTracks, gammas.nextTracks},
           {electrons.soaNextTrack, positrons.soaNextTrack, gammas.soaNextTrack},
           {electrons.leaks, positrons.leaks, gammas.leaks},
+          {electrons.soaLeaks, positrons.soaLeaks, gammas.soaLeaks},
           {electrons.injected, positrons.injected, gammas.injected},
           {electrons.soaInjected, positrons.soaInjected, gammas.soaInjected},
           {electrons.slotManager, positrons.slotManager, gammas.slotManager},

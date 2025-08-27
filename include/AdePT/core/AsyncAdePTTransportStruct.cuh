@@ -66,13 +66,9 @@ public:
   __device__ Track &InitTrack(SlotManager::value_type slot, Ts &&...args)
   {
     // Initialize the values in the SoA storage
-    fSoANextTracks->InitTrack(slot, fSoATracks, std::forward<Ts>(args)...);
+    fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
     // Init the main track
     return *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
-    // auto &track = *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
-    // // IMPORTANT: Only needed during the transition from AoS to SoA
-    // track.currentSlot = slot;
-    // return track;
   }
 
   /// Construct a track at the given location, forwarding all arguments to the constructor.
@@ -91,17 +87,10 @@ public:
   {
     const auto slot = NextSlot();
     fActiveQueue->push_back(slot);
-    // Initialize the values in the SoA storage
-    // fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
-    // Init the main track
+    // Init the track
     auto &track = InitTrack(slot, std::forward<Ts>(args)...);
-
-    // printf("AFTER dir: (%f, %f, %f), SLOT: %d, SOA: %p, SOA DIR: %p, SOA NEXT: %p, SOA NEXT DIR: %p\n",
-    //        fSoANextTracks->fDir[slot][0], fSoANextTracks->fDir[slot][1], fSoANextTracks->fDir[slot][2], slot,
-    //        fSoATracks, fSoATracks->fDir, fSoANextTracks, fSoANextTracks->fDir);
     // IMPORTANT: Only needed during the transition from AoS to SoA
     track.currentSlot = slot;
-
     return track;
   }
 
@@ -348,6 +337,7 @@ struct TracksAndSlots {
   Track *const nextTracks[ParticleType::NumParticleTypes];
   SoATrack *const soaNextTracks[ParticleType::NumParticleTypes];
   Track *const leaks[ParticleType::NumParticleTypes];
+  SoATrack *const soaLeaks[ParticleType::NumParticleTypes];
   Track *const injected[ParticleType::NumParticleTypes];
   SoATrack *const soaInjected[ParticleType::NumParticleTypes];
   SlotManager *const slotManagers[ParticleType::NumParticleTypes];

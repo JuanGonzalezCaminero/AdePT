@@ -85,10 +85,11 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
       }
     };
 
-    if (InFlightStats->perEventInFlightPrevious[currentTrack.threadId] < allowFinishOffEvent[currentTrack.threadId] &&
-        InFlightStats->perEventInFlightPrevious[currentTrack.threadId] != 0) {
+    if (InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]] <
+            allowFinishOffEvent[soaTrack->fThreadId[slot]] &&
+        InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]] != 0) {
       printf("Thread %d Finishing gamma of the %d last particles of event %d on CPU E=%f lvol=%d after %d steps.\n",
-             currentTrack.threadId, InFlightStats->perEventInFlightPrevious[currentTrack.threadId],
+             soaTrack->fThreadId[slot], InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]],
              currentTrack.eventId, soaTrack->fEkin[slot], lvolID, currentTrack.stepCounter);
       survive(LeakStatus::FinishEventOnCPU);
       continue;
@@ -320,24 +321,24 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
       // as now the nextState is defined, but the navState is not yet replaced
       if (returnAllSteps)
         adept_scoring::RecordHit(userScoring,
-                                 currentTrack.trackId,                        // Track ID
-                                 currentTrack.parentId,                       // parent Track ID
-                                 static_cast<short>(10),                      // step defining process ID
-                                 2,                                           // Particle type
-                                 currentTrack.geometryStepLength,             // Step length
-                                 0,                                           // Total Edep
-                                 soaTrack->fWeight[slot],                     // Track weight
-                                 currentTrack.navState,                       // Pre-step point navstate
-                                 currentTrack.preStepPos,                     // Pre-step point position
-                                 currentTrack.preStepDir,                     // Pre-step point momentum direction
-                                 currentTrack.preStepEKin,                    // Pre-step point kinetic energy
-                                 currentTrack.nextState,                      // Post-step point navstate
-                                 soaTrack->fPos[slot],                        // Post-step point position
-                                 soaTrack->fDir[slot],                        // Post-step point momentum direction
-                                 soaTrack->fEkin[slot],                       // Post-step point kinetic energy
-                                 currentTrack.globalTime,                     // global time
-                                 currentTrack.localTime,                      // local time
-                                 currentTrack.eventId, currentTrack.threadId, // event and thread ID
+                                 currentTrack.trackId,                            // Track ID
+                                 currentTrack.parentId,                           // parent Track ID
+                                 static_cast<short>(10),                          // step defining process ID
+                                 2,                                               // Particle type
+                                 currentTrack.geometryStepLength,                 // Step length
+                                 0,                                               // Total Edep
+                                 soaTrack->fWeight[slot],                         // Track weight
+                                 currentTrack.navState,                           // Pre-step point navstate
+                                 currentTrack.preStepPos,                         // Pre-step point position
+                                 currentTrack.preStepDir,                         // Pre-step point momentum direction
+                                 currentTrack.preStepEKin,                        // Pre-step point kinetic energy
+                                 currentTrack.nextState,                          // Post-step point navstate
+                                 soaTrack->fPos[slot],                            // Post-step point position
+                                 soaTrack->fDir[slot],                            // Post-step point momentum direction
+                                 soaTrack->fEkin[slot],                           // Post-step point kinetic energy
+                                 currentTrack.globalTime,                         // global time
+                                 currentTrack.localTime,                          // local time
+                                 currentTrack.eventId, soaTrack->fThreadId[slot], // event and thread ID
                                  false,                     // whether this is the last step of the track
                                  currentTrack.stepCounter); // stepcounter
 
@@ -362,24 +363,24 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
       // particle has left the world, record hit if last or all steps are returned
       if (returnAllSteps || returnLastStep)
         adept_scoring::RecordHit(userScoring,
-                                 currentTrack.trackId,                        // Track ID
-                                 currentTrack.parentId,                       // parent Track ID
-                                 static_cast<short>(10),                      // step defining process ID
-                                 2,                                           // Particle type
-                                 currentTrack.geometryStepLength,             // Step length
-                                 0,                                           // Total Edep
-                                 soaTrack->fWeight[slot],                     // Track weight
-                                 currentTrack.navState,                       // Pre-step point navstate
-                                 currentTrack.preStepPos,                     // Pre-step point position
-                                 currentTrack.preStepDir,                     // Pre-step point momentum direction
-                                 currentTrack.preStepEKin,                    // Pre-step point kinetic energy
-                                 currentTrack.nextState,                      // Post-step point navstate
-                                 soaTrack->fPos[slot],                        // Post-step point position
-                                 soaTrack->fDir[slot],                        // Post-step point momentum direction
-                                 soaTrack->fEkin[slot],                       // Post-step point kinetic energy
-                                 currentTrack.globalTime,                     // global time
-                                 currentTrack.localTime,                      // local time
-                                 currentTrack.eventId, currentTrack.threadId, // event and thread ID
+                                 currentTrack.trackId,                            // Track ID
+                                 currentTrack.parentId,                           // parent Track ID
+                                 static_cast<short>(10),                          // step defining process ID
+                                 2,                                               // Particle type
+                                 currentTrack.geometryStepLength,                 // Step length
+                                 0,                                               // Total Edep
+                                 soaTrack->fWeight[slot],                         // Track weight
+                                 currentTrack.navState,                           // Pre-step point navstate
+                                 currentTrack.preStepPos,                         // Pre-step point position
+                                 currentTrack.preStepDir,                         // Pre-step point momentum direction
+                                 currentTrack.preStepEKin,                        // Pre-step point kinetic energy
+                                 currentTrack.nextState,                          // Post-step point navstate
+                                 soaTrack->fPos[slot],                            // Post-step point position
+                                 soaTrack->fDir[slot],                            // Post-step point momentum direction
+                                 soaTrack->fEkin[slot],                           // Post-step point kinetic energy
+                                 currentTrack.globalTime,                         // global time
+                                 currentTrack.localTime,                          // local time
+                                 currentTrack.eventId, soaTrack->fThreadId[slot], // event and thread ID
                                  true,                      // whether this is the last step of the track
                                  currentTrack.stepCounter); // stepcounter
     }
@@ -462,7 +463,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     } else {
       Track &electron = secondaries.electrons.NextTrack(
           elKinEnergy, soaTrack->fPos[slot],
-          vecgeom::Vector3D<Precision>{dirSecondaryEl[0], dirSecondaryEl[1], dirSecondaryEl[2]}, slot, newRNG,
+          vecgeom::Vector3D<Precision>{dirSecondaryEl[0], dirSecondaryEl[1], dirSecondaryEl[2]}, soaTrack, slot, newRNG,
           currentTrack.navState, currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
@@ -484,9 +485,10 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             elKinEnergy,                                                         // Post-step point kinetic energy
             electron.globalTime,                                                 // global time
             0.,                                                                  // local time
-            electron.eventId, electron.threadId,                                 // eventID and threadID
-            false,                                                               // whether this was the last step
-            electron.stepCounter);                                               // whether this was the first step
+            electron.eventId,
+            secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
+            false,                                                                 // whether this was the last step
+            electron.stepCounter);                                                 // whether this was the first step
       }
     }
 
@@ -496,7 +498,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     } else {
       Track &positron = secondaries.positrons.NextTrack(
           posKinEnergy, soaTrack->fPos[slot],
-          vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]}, slot,
+          vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]}, soaTrack, slot,
           currentTrack.rngState, currentTrack.navState, currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
@@ -518,9 +520,10 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             posKinEnergy,                                                        // Post-step point kinetic energy
             positron.globalTime,                                                 // global time
             0.,                                                                  // local time
-            positron.eventId, positron.threadId,                                 // eventID and threadID
-            false,                                                               // whether this was the last step
-            positron.stepCounter);                                               // whether this was the first step
+            positron.eventId,
+            secondaries.electrons.fSoANextTracks->fThreadId[positron.currentSlot], // eventID and threadID
+            false,                                                                 // whether this was the last step
+            positron.stepCounter);                                                 // whether this was the first step
       }
     }
 
@@ -532,24 +535,24 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     // If there is some edep from cutting particles, record the step
     if ((edep > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep) {
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,                        // Track ID
-                               currentTrack.parentId,                       // parent Track ID
-                               static_cast<short>(0),                       // step defining process ID
-                               2,                                           // Particle type
-                               currentTrack.geometryStepLength,             // Step length
-                               edep,                                        // Total Edep
-                               soaTrack->fWeight[slot],                     // Track weight
-                               currentTrack.navState,                       // Pre-step point navstate
-                               currentTrack.preStepPos,                     // Pre-step point position
-                               currentTrack.preStepDir,                     // Pre-step point momentum direction
-                               currentTrack.preStepEKin,                    // Pre-step point kinetic energy
-                               currentTrack.nextState,                      // Post-step point navstate
-                               soaTrack->fPos[slot],                        // Post-step point position
-                               soaTrack->fDir[slot],                        // Post-step point momentum direction
-                               newEnergyGamma,                              // Post-step point kinetic energy
-                               currentTrack.globalTime,                     // global time
-                               currentTrack.localTime,                      // local time
-                               currentTrack.eventId, currentTrack.threadId, // event and thread ID
+                               currentTrack.trackId,                            // Track ID
+                               currentTrack.parentId,                           // parent Track ID
+                               static_cast<short>(0),                           // step defining process ID
+                               2,                                               // Particle type
+                               currentTrack.geometryStepLength,                 // Step length
+                               edep,                                            // Total Edep
+                               soaTrack->fWeight[slot],                         // Track weight
+                               currentTrack.navState,                           // Pre-step point navstate
+                               currentTrack.preStepPos,                         // Pre-step point position
+                               currentTrack.preStepDir,                         // Pre-step point momentum direction
+                               currentTrack.preStepEKin,                        // Pre-step point kinetic energy
+                               currentTrack.nextState,                          // Post-step point navstate
+                               soaTrack->fPos[slot],                            // Post-step point position
+                               soaTrack->fDir[slot],                            // Post-step point momentum direction
+                               newEnergyGamma,                                  // Post-step point kinetic energy
+                               currentTrack.globalTime,                         // global time
+                               currentTrack.localTime,                          // local time
+                               currentTrack.eventId, soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep,                // whether this is the last step of the track
                                currentTrack.stepCounter); // stepcounter
     }
@@ -624,7 +627,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
       // Create a secondary electron and sample/compute directions.
       Track &electron = secondaries.electrons.NextTrack(
           energyEl, soaTrack->fPos[slot], soaTrack->fEkin[slot] * soaTrack->fDir[slot] - newEnergyGamma * newDirGamma,
-          slot, newRNG, currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack, slot, newRNG, currentTrack.navState, currentTrack, currentTrack.globalTime);
       secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot].Normalize();
 
       // if tracking or stepping action is called, return initial step
@@ -646,9 +649,10 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
             energyEl,                                                            // Post-step point kinetic energy
             electron.globalTime,                                                 // global time
             0.,                                                                  // local time
-            electron.eventId, electron.threadId,                                 // eventID and threadID
-            false,                                                               // whether this was the last step
-            electron.stepCounter);                                               // whether this was the first step
+            electron.eventId,
+            secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
+            false,                                                                 // whether this was the last step
+            electron.stepCounter);                                                 // whether this was the first step
       }
 
     } else {
@@ -673,24 +677,24 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
     // If there is some edep from cutting particles, record the step
     if ((edep > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep) {
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,                        // Track ID
-                               currentTrack.parentId,                       // parent Track ID
-                               static_cast<short>(1),                       // step defining process ID
-                               2,                                           // Particle type
-                               currentTrack.geometryStepLength,             // Step length
-                               edep,                                        // Total Edep
-                               soaTrack->fWeight[slot],                     // Track weight
-                               currentTrack.navState,                       // Pre-step point navstate
-                               currentTrack.preStepPos,                     // Pre-step point position
-                               currentTrack.preStepDir,                     // Pre-step point momentum direction
-                               currentTrack.preStepEKin,                    // Pre-step point kinetic energy
-                               currentTrack.nextState,                      // Post-step point navstate
-                               soaTrack->fPos[slot],                        // Post-step point position
-                               soaTrack->fDir[slot],                        // Post-step point momentum direction
-                               newEnergyGamma,                              // Post-step point kinetic energy
-                               currentTrack.globalTime,                     // global time
-                               currentTrack.localTime,                      // local time
-                               currentTrack.eventId, currentTrack.threadId, // event and thread ID
+                               currentTrack.trackId,                            // Track ID
+                               currentTrack.parentId,                           // parent Track ID
+                               static_cast<short>(1),                           // step defining process ID
+                               2,                                               // Particle type
+                               currentTrack.geometryStepLength,                 // Step length
+                               edep,                                            // Total Edep
+                               soaTrack->fWeight[slot],                         // Track weight
+                               currentTrack.navState,                           // Pre-step point navstate
+                               currentTrack.preStepPos,                         // Pre-step point position
+                               currentTrack.preStepDir,                         // Pre-step point momentum direction
+                               currentTrack.preStepEKin,                        // Pre-step point kinetic energy
+                               currentTrack.nextState,                          // Post-step point navstate
+                               soaTrack->fPos[slot],                            // Post-step point position
+                               soaTrack->fDir[slot],                            // Post-step point momentum direction
+                               newEnergyGamma,                                  // Post-step point kinetic energy
+                               currentTrack.globalTime,                         // global time
+                               currentTrack.localTime,                          // local time
+                               currentTrack.eventId, soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep, // whether this is the last step of the track
                                currentTrack.stepCounter);
     }
@@ -764,7 +768,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
       // Create a secondary electron and sample directions.
       Track &electron = secondaries.electrons.NextTrack(
           photoElecE, soaTrack->fPos[slot],
-          vecgeom::Vector3D<Precision>{dirPhotoElec[0], dirPhotoElec[1], dirPhotoElec[2]}, slot, newRNG,
+          vecgeom::Vector3D<Precision>{dirPhotoElec[0], dirPhotoElec[1], dirPhotoElec[2]}, soaTrack, slot, newRNG,
           currentTrack.navState, currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
@@ -786,9 +790,10 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
             photoElecE,                                                          // Post-step point kinetic energy
             electron.globalTime,                                                 // global time
             0.,                                                                  // local time
-            electron.eventId, electron.threadId,                                 // eventID and threadID
-            false,                                                               // whether this was the last step
-            electron.stepCounter);                                               // whether this was the first step
+            electron.eventId,
+            secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
+            false,                                                                 // whether this was the last step
+            electron.stepCounter);                                                 // whether this was the first step
       }
 
     } else {
@@ -803,24 +808,24 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
     // If there is some edep from cutting particles, record the step
     if ((edep > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep) {
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,                        // Track ID
-                               currentTrack.parentId,                       // parent Track ID
-                               static_cast<short>(2),                       // step defining process ID
-                               2,                                           // Particle type
-                               currentTrack.geometryStepLength,             // Step length
-                               edep,                                        // Total Edep
-                               soaTrack->fWeight[slot],                     // Track weight
-                               currentTrack.navState,                       // Pre-step point navstate
-                               currentTrack.preStepPos,                     // Pre-step point position
-                               currentTrack.preStepDir,                     // Pre-step point momentum direction
-                               currentTrack.preStepEKin,                    // Pre-step point kinetic energy
-                               currentTrack.nextState,                      // Post-step point navstate
-                               soaTrack->fPos[slot],                        // Post-step point position
-                               soaTrack->fDir[slot],                        // Post-step point momentum direction
-                               newEnergyGamma,                              // Post-step point kinetic energy
-                               currentTrack.globalTime,                     // global time
-                               currentTrack.localTime,                      // local time
-                               currentTrack.eventId, currentTrack.threadId, // event and thread ID
+                               currentTrack.trackId,                            // Track ID
+                               currentTrack.parentId,                           // parent Track ID
+                               static_cast<short>(2),                           // step defining process ID
+                               2,                                               // Particle type
+                               currentTrack.geometryStepLength,                 // Step length
+                               edep,                                            // Total Edep
+                               soaTrack->fWeight[slot],                         // Track weight
+                               currentTrack.navState,                           // Pre-step point navstate
+                               currentTrack.preStepPos,                         // Pre-step point position
+                               currentTrack.preStepDir,                         // Pre-step point momentum direction
+                               currentTrack.preStepEKin,                        // Pre-step point kinetic energy
+                               currentTrack.nextState,                          // Post-step point navstate
+                               soaTrack->fPos[slot],                            // Post-step point position
+                               soaTrack->fDir[slot],                            // Post-step point momentum direction
+                               newEnergyGamma,                                  // Post-step point kinetic energy
+                               currentTrack.globalTime,                         // global time
+                               currentTrack.localTime,                          // local time
+                               currentTrack.eventId, soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep, // whether this is the last step of the track
                                currentTrack.stepCounter);
     }

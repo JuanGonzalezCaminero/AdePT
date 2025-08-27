@@ -23,10 +23,12 @@ struct SoATrack {
   vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
+  short *fThreadId;
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight, Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight,
+                            short threadId, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -34,15 +36,16 @@ struct SoATrack {
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot].Set(pos[0], pos[1], pos[2]);
     fDir[trackSlot].Set(dir[0], dir[1], dir[2]);
-    fWeight[trackSlot] = weight;
+    fWeight[trackSlot]   = weight;
+    fThreadId[trackSlot] = threadId;
 
     // printf("INSERTED dir (pointer): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
   }
 
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, SoATrack *parentSoATrack, double eKin,
-                            const vecgeom::Vector3D<Precision> &pos, const vecgeom::Vector3D<Precision> &dir,
-                            int parentTrackSlot, Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
+                            const vecgeom::Vector3D<Precision> &dir, SoATrack *parentSoATrack, int parentTrackSlot,
+                            Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -51,9 +54,8 @@ struct SoATrack {
     fPos[trackSlot] = pos;
     fDir[trackSlot] = dir;
 
-    fWeight[trackSlot] = parentSoATrack->fWeight[parentTrackSlot];
-
-    // printf("INSERTED dir (reference): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
+    fWeight[trackSlot]   = parentSoATrack->fWeight[parentTrackSlot];
+    fThreadId[trackSlot] = parentSoATrack->fThreadId[parentTrackSlot];
   }
 
   /// @brief Get recomputed cached safety ay a given track position
@@ -131,7 +133,7 @@ struct Track {
   unsigned int currentSlot{0};
 
   unsigned int eventId{0};
-  short threadId{-1};
+  // short threadId{-1};
   unsigned short stepCounter{0};
   unsigned short looperCounter{0};
   unsigned short zeroStepCounter{0};
@@ -148,12 +150,11 @@ struct Track {
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
-  __device__ Track(double eKin, double const position[3], double const direction[3], float weight,
+  __device__ Track(double eKin, double const position[3], double const direction[3], float weight, short threadId,
                    uint64_t rngSeed /*, double eKin*/, double globalTime, float localTime, float properTime,
-                   unsigned int eventId, uint64_t trackId, uint64_t parentId, short threadId,
-                   unsigned short stepCounter)
+                   unsigned int eventId, uint64_t trackId, uint64_t parentId, unsigned short stepCounter)
       : /*eKin{eKin},*/ /*weight{weight},*/ globalTime{globalTime}, localTime{localTime}, properTime{properTime},
-        eventId{eventId}, trackId{trackId}, parentId{parentId}, threadId{threadId}, stepCounter{stepCounter},
+        eventId{eventId}, trackId{trackId}, parentId{parentId}, /*threadId{threadId},*/ stepCounter{stepCounter},
         looperCounter{0}, zeroStepCounter{0}
   {
     rngState.SetSeed(rngSeed);
@@ -165,13 +166,14 @@ struct Track {
   /// Construct a secondary from a parent track.
   /// NB: The caller is responsible to branch a new RNG state.
   __device__ Track(double eKin, const vecgeom::Vector3D<Precision> &parentPos,
-                   const vecgeom::Vector3D<Precision> &newDirection, int parentTrackSlot,
+                   const vecgeom::Vector3D<Precision> &newDirection, SoATrack *parentSoATrack, int parentTrackSlot,
                    RanluxppDouble const &rng_state /*, double eKin*/, const vecgeom::NavigationState &newNavState,
                    const Track &parentTrack, const double globalTime)
       : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, /*pos{parentPos}, dir{newDirection},*/
         navState{newNavState}, originNavState{newNavState}, trackId{rngState.IntRndm64()}, eventId{parentTrack.eventId},
-        parentId{parentTrack.trackId}, threadId{parentTrack.threadId}, /*weight{parentTrack.weight},*/ stepCounter{0},
-        looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
+        parentId{parentTrack.trackId},
+        /*threadId{parentTrack.threadId},*/ /*weight{parentTrack.weight},*/ stepCounter{0}, looperCounter{0},
+        zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
 

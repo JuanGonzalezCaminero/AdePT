@@ -53,6 +53,8 @@ __device__ __forceinline__ void CopyTrack(int slotSrc, int slotDst, Track *src, 
   soaDst->fThreadId[slotDst]  = soaSrc->fThreadId[slotSrc];
   soaDst->fParentId[slotDst]  = soaSrc->fParentId[slotSrc];
   soaDst->fEventId[slotDst]   = soaSrc->fEventId[slotSrc];
+  soaDst->fRngState[slotDst]  = soaSrc->fRngState[slotSrc];
+  soaDst->fTrackId[slotDst]   = soaSrc->fTrackId[slotSrc];
 }
 
 template <bool IsElectron>
@@ -101,8 +103,8 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
     if (currentTrack.stepCounter >= maxSteps || currentTrack.zeroStepCounter > kStepsStuckKill) {
       if (printErrors)
         printf("Killing e-/+ event %d track %ld E=%f lvol=%d after %d steps with zeroStepCounter %u\n",
-               soaTrack->fEventId[slot], currentTrack.trackId, soaTrack->fEkin[slot], lvolID, currentTrack.stepCounter,
-               currentTrack.zeroStepCounter);
+               soaTrack->fEventId[slot], soaTrack->fTrackId[slot], soaTrack->fEkin[slot], lvolID,
+               currentTrack.stepCounter, currentTrack.zeroStepCounter);
       continue;
     }
 
@@ -158,13 +160,13 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
     mscData->fDynamicRangeFactor = currentTrack.dynamicRangeFactor;
     mscData->fTlimitMin          = currentTrack.tlimitMin;
 
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     // Sample the `number-of-interaction-left` and put it into the track.
     for (int ip = 0; ip < 4; ++ip) {
       double numIALeft = currentTrack.numIALeft[ip];
       if (numIALeft <= 0) {
-        numIALeft = -std::log(currentTrack.Uniform());
+        numIALeft = -std::log(soaTrack->Uniform(slot));
       }
       theTrack->SetNumIALeft(numIALeft, ip);
     }
@@ -265,7 +267,7 @@ __global__ void ElectronPropagation(Track *electrons, SoATrack *soaTrack, G4HepE
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     // Check if there's a volume boundary in between.
     currentTrack.propagated = true;
@@ -341,7 +343,7 @@ __global__ void ElectronMSC(Track *electrons, SoATrack *soaTrack, G4HepEmElectro
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     // Apply continuous effects.
     currentTrack.stopped = G4HepEmElectronManager::PerformContinuous(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
@@ -516,7 +518,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
         // No discrete process, move on.
         survive();
         reached_interaction = false;
-      } else if (G4HepEmElectronManager::CheckDelta(&g4HepEmData, theTrack, currentTrack.Uniform())) {
+      } else if (G4HepEmElectronManager::CheckDelta(&g4HepEmData, theTrack, soaTrack->Uniform(slot))) {
         // If there was a delta interaction, the track survives but does not move onto the next kernel
         survive();
         reached_interaction = false;
@@ -563,7 +565,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
       // Score the edep for particles that didn't reach the interaction
       if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
         adept_scoring::RecordHit(userScoring,
-                                 currentTrack.trackId,                                  // Track ID
+                                 soaTrack->fTrackId[slot],                              // Track ID
                                  soaTrack->fParentId[slot],                             // parent Track ID
                                  static_cast<short>(theTrack->GetWinnerProcessIndex()), // step defining process
                                  static_cast<char>(IsElectron ? 0 : 1),                 // Particle type
@@ -701,7 +703,7 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
     // Score
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,                  // Track ID
+                               soaTrack->fTrackId[slot],              // Track ID
                                soaTrack->fParentId[slot],             // parent Track ID
                                static_cast<short>(/*transport*/ 10),  // step limiting process ID
                                static_cast<char>(IsElectron ? 0 : 1), // Particle type
@@ -760,16 +762,16 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
 
       adept_scoring::AccountProduced(userScoring, /*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 2);
 
-      const double cost = 2 * currentTrack.Uniform() - 1;
+      const double cost = 2 * soaTrack->Uniform(slot) - 1;
       const double sint = sqrt(1 - cost * cost);
-      const double phi  = k2Pi * currentTrack.Uniform();
+      const double phi  = k2Pi * soaTrack->Uniform(slot);
       double sinPhi, cosPhi;
       sincos(phi, &sinPhi, &cosPhi);
 
       // as the other branched newRNG may have already been used by interactions before, we need to advance and create a
       // new one
-      currentTrack.rngState.Advance();
-      RanluxppDouble newRNG(currentTrack.rngState.Branch());
+      soaTrack->fRngState[slot].Advance();
+      RanluxppDouble newRNG(soaTrack->fRngState[slot].Branch());
 
       Track &gamma1 =
           secondaries.gammas.NextTrack(double{copcore::units::kElectronMassC2}, soaTrack->fPos[slot],
@@ -793,13 +795,14 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
       // Reuse the RNG state of the dying track.
       Track &gamma2 = secondaries.gammas.NextTrack(double{copcore::units::kElectronMassC2}, soaTrack->fPos[slot],
                                                    -secondaries.gammas.fSoANextTracks->fDir[gamma1.currentSlot],
-                                                   soaTrack, slot, currentTrack.rngState, currentTrack.navState,
+                                                   soaTrack, slot, soaTrack->fRngState[slot], currentTrack.navState,
                                                    currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, gamma1.trackId, secondaries.gammas.fSoANextTracks->fParentId[gamma1.currentSlot],
+            userScoring, secondaries.gammas.fSoANextTracks->fTrackId[gamma1.currentSlot],
+            secondaries.gammas.fSoANextTracks->fParentId[gamma1.currentSlot],
             /*CreatorProcessId*/ short(2),
             /* gamma*/ 2,                                                   // Particle type
             0,                                                              // Step length
@@ -820,7 +823,8 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
             false,                                                            // whether this was the last step
             gamma1.stepCounter);                                              // whether this was the first step
         adept_scoring::RecordHit(
-            userScoring, gamma2.trackId, secondaries.gammas.fSoANextTracks->fParentId[gamma2.currentSlot],
+            userScoring, secondaries.gammas.fSoANextTracks->fTrackId[gamma2.currentSlot],
+            secondaries.gammas.fSoANextTracks->fParentId[gamma2.currentSlot],
             /*CreatorProcessId*/ short(2),
             /* gamma*/ 2,                                                   // Particle type
             0,                                                              // Step length
@@ -891,7 +895,7 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     double energyDeposit = theTrack->GetEnergyDeposit();
 
@@ -903,10 +907,10 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
 
     // Perform the discrete interaction, branch a new RNG state with advance so it is
     // ready to be used.
-    auto newRNG = RanluxppDouble(currentTrack.rngState.Branch());
+    auto newRNG = RanluxppDouble(soaTrack->fRngState[slot].Branch());
     // Also advance the current RNG state to provide a fresh round of random
     // numbers after MSC used up a fair share for sampling the displacement.
-    currentTrack.rngState.Advance();
+    soaTrack->fRngState[slot].Advance();
 
     // Invoke ionization (for e-/e+):
     double deltaEkin =
@@ -939,7 +943,8 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, secondary.trackId, secondaries.electrons.fSoANextTracks->fParentId[secondary.currentSlot],
+            userScoring, secondaries.electrons.fSoANextTracks->fTrackId[secondary.currentSlot],
+            secondaries.electrons.fSoANextTracks->fParentId[secondary.currentSlot],
             /*CreatorProcessId*/ short(0),
             /* electron*/ 0,                                                      // Particle type
             0,                                                                    // Step length
@@ -980,7 +985,7 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,                  // Track ID
+                               soaTrack->fTrackId[slot],              // Track ID
                                soaTrack->fParentId[slot],             // parent Track ID
                                static_cast<short>(0),                 // step limiting process ID
                                static_cast<char>(IsElectron ? 0 : 1), // Particle type
@@ -1047,7 +1052,7 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     double energyDeposit = theTrack->GetEnergyDeposit();
 
@@ -1058,10 +1063,10 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
 
     // Perform the discrete interaction, branch a new RNG state with advance so it is
     // ready to be used.
-    auto newRNG = RanluxppDouble(currentTrack.rngState.Branch());
+    auto newRNG = RanluxppDouble(soaTrack->fRngState[slot].Branch());
     // Also advance the current RNG state to provide a fresh round of random
     // numbers after MSC used up a fair share for sampling the displacement.
-    currentTrack.rngState.Advance();
+    soaTrack->fRngState[slot].Advance();
 
     // Invoke model for Bremsstrahlung: either SB- or Rel-Brem.
     double logEnergy = std::log(soaTrack->fEkin[slot]);
@@ -1090,7 +1095,8 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, gamma.trackId, secondaries.gammas.fSoANextTracks->fParentId[gamma.currentSlot],
+            userScoring, secondaries.gammas.fSoANextTracks->fTrackId[gamma.currentSlot],
+            secondaries.gammas.fSoANextTracks->fParentId[gamma.currentSlot],
             /*CreatorProcessId*/ short(1),
             /* gamma*/ 2,                                                  // Particle type
             0,                                                             // Step length
@@ -1131,7 +1137,7 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,                  // Track ID
+                               soaTrack->fTrackId[slot],              // Track ID
                                soaTrack->fParentId[slot],             // parent Track ID
                                static_cast<short>(1),                 // step limiting process ID
                                static_cast<char>(IsElectron ? 0 : 1), // Particle type
@@ -1178,7 +1184,7 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     double energyDeposit = theTrack->GetEnergyDeposit();
 
@@ -1189,10 +1195,10 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
 
     // Perform the discrete interaction, branch a new RNG state with advance so it is
     // ready to be used.
-    auto newRNG = RanluxppDouble(currentTrack.rngState.Branch());
+    auto newRNG = RanluxppDouble(soaTrack->fRngState[slot].Branch());
     // Also advance the current RNG state to provide a fresh round of random
     // numbers after MSC used up a fair share for sampling the displacement.
-    currentTrack.rngState.Advance();
+    soaTrack->fRngState[slot].Advance();
 
     // Invoke annihilation (in-flight) for e+
     double dirPrimary[] = {soaTrack->fDir[slot].x(), soaTrack->fDir[slot].y(), soaTrack->fDir[slot].z()};
@@ -1218,7 +1224,8 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, gamma1.trackId, secondaries.gammas.fSoANextTracks->fParentId[gamma1.currentSlot],
+            userScoring, secondaries.gammas.fSoANextTracks->fTrackId[gamma1.currentSlot],
+            secondaries.gammas.fSoANextTracks->fParentId[gamma1.currentSlot],
             /*CreatorProcessId*/ short(2),
             /* gamma*/ 2,                                                   // Particle type
             0,                                                              // Step length
@@ -1248,11 +1255,12 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
       Track &gamma2 = secondaries.gammas.NextTrack(
           theGamma2Ekin, soaTrack->fPos[slot],
           vecgeom::Vector3D<Precision>{theGamma2Dir[0], theGamma2Dir[1], theGamma2Dir[2]}, soaTrack, slot,
-          currentTrack.rngState, currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack->fRngState[slot], currentTrack.navState, currentTrack, currentTrack.globalTime);
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, gamma2.trackId, secondaries.gammas.fSoANextTracks->fParentId[gamma2.currentSlot],
+            userScoring, secondaries.gammas.fSoANextTracks->fTrackId[gamma2.currentSlot],
+            secondaries.gammas.fSoANextTracks->fParentId[gamma2.currentSlot],
             /*CreatorProcessId*/ short(2),
             /* gamma*/ 2,                                                   // Particle type
             0,                                                              // Step length
@@ -1281,7 +1289,7 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,      // Track ID
+                               soaTrack->fTrackId[slot],  // Track ID
                                soaTrack->fParentId[slot], // parent Track ID
                                static_cast<short>(2),     // step limiting process ID
                                static_cast<char>(1),      // Particle type
@@ -1328,7 +1336,7 @@ __global__ void PositronStoppedAnnihilation(Track *electrons, SoATrack *soaTrack
     G4HepEmTrack *theTrack        = elTrack.GetTrack();
 
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     double energyDeposit = theTrack->GetEnergyDeposit();
 
@@ -1346,7 +1354,7 @@ __global__ void PositronStoppedAnnihilation(Track *electrons, SoATrack *soaTrack
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,      // Track ID
+                               soaTrack->fTrackId[slot],  // Track ID
                                soaTrack->fParentId[slot], // parent Track ID
                                static_cast<short>(2),     // step limiting process ID
                                static_cast<char>(1),      // Particle type

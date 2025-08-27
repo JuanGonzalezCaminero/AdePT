@@ -59,8 +59,8 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
       if (printErrors)
         printf("Killing gamma event %d track %lu E=%f lvol=%d after %d steps with zeroStepCounter %u. This indicates a "
                "stuck particle!\n",
-               soaTrack->fEventId[slot], currentTrack.trackId, soaTrack->fEkin[slot], lvolID, currentTrack.stepCounter,
-               currentTrack.zeroStepCounter);
+               soaTrack->fEventId[slot], soaTrack->fTrackId[slot], soaTrack->fEkin[slot], lvolID,
+               currentTrack.stepCounter, currentTrack.zeroStepCounter);
       continue;
     }
 
@@ -106,7 +106,7 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
     // G4HepEmTrack. Use index 0 since numIALeft for gammas is based only on the total macroscopic cross section. The
     // currentTrack.numIALeft[0] are updated later
     if (currentTrack.numIALeft[0] <= 0.0) {
-      theTrack->SetNumIALeft(-std::log(currentTrack.Uniform()), 0);
+      theTrack->SetNumIALeft(-std::log(soaTrack->Uniform(slot)), 0);
     } else {
       theTrack->SetNumIALeft(currentTrack.numIALeft[0], 0);
     }
@@ -229,7 +229,7 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
       currentTrack.restrictedPhysicalStepLength = false;
 
       // NOTE: This may be moved to the next kernel
-      G4HepEmGammaManager::SampleInteraction(&g4HepEmData, &gammaTrack, currentTrack.Uniform());
+      G4HepEmGammaManager::SampleInteraction(&g4HepEmData, &gammaTrack, soaTrack->Uniform(slot));
 
       // Reset number of interaction left for the winner discrete process also in the currentTrack
       // (SampleInteraction() resets it for theTrack), will be resampled in the next iteration.
@@ -240,8 +240,8 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
       } else {
         // IMPORTANT: This is necessary just for getting numerically identical results,
         // but should be removed once confirmed that results are good
-        G4HepEmRandomEngine rnge(&currentTrack.rngState);
-        RanluxppDouble newRNG(currentTrack.rngState.Branch());
+        G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
+        RanluxppDouble newRNG(soaTrack->fRngState[slot].Branch());
         // Gamma nuclear needs to be handled by Geant4 directly, passing track back to CPU
         survive(LeakStatus::GammaNuclear);
       }
@@ -321,7 +321,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
       // as now the nextState is defined, but the navState is not yet replaced
       if (returnAllSteps)
         adept_scoring::RecordHit(userScoring,
-                                 currentTrack.trackId,            // Track ID
+                                 soaTrack->fTrackId[slot],        // Track ID
                                  soaTrack->fParentId[slot],       // parent Track ID
                                  static_cast<short>(10),          // step defining process ID
                                  2,                               // Particle type
@@ -363,7 +363,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
       // particle has left the world, record hit if last or all steps are returned
       if (returnAllSteps || returnLastStep)
         adept_scoring::RecordHit(userScoring,
-                                 currentTrack.trackId,            // Track ID
+                                 soaTrack->fTrackId[slot],        // Track ID
                                  soaTrack->fParentId[slot],       // parent Track ID
                                  static_cast<short>(10),          // step defining process ID
                                  2,                               // Particle type
@@ -422,9 +422,9 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
 
     // Perform the discrete interaction.
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
     // We might need one branched RNG state, prepare while threads are synchronized.
-    RanluxppDouble newRNG(currentTrack.rngState.Branch());
+    RanluxppDouble newRNG(soaTrack->fRngState[slot].Branch());
 
     const double theElCut    = g4HepEmData.fTheMatCutData->fMatCutData[auxData.fMCIndex].fSecElProdCutE;
     const double thePosCut   = g4HepEmData.fTheMatCutData->fMatCutData[auxData.fMCIndex].fSecPosProdCutE;
@@ -469,7 +469,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, electron.trackId, secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
+            userScoring, secondaries.electrons.fSoANextTracks->fTrackId[electron.currentSlot],
+            secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
             /*CreatorProcessId*/ short(0),
             /* electron*/ 0,                                                     // Particle type
             0,                                                                   // Step length
@@ -499,12 +500,13 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
       Track &positron = secondaries.positrons.NextTrack(
           posKinEnergy, soaTrack->fPos[slot],
           vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]}, soaTrack, slot,
-          currentTrack.rngState, currentTrack.navState, currentTrack, currentTrack.globalTime);
+          soaTrack->fRngState[slot], currentTrack.navState, currentTrack, currentTrack.globalTime);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, positron.trackId, secondaries.positrons.fSoANextTracks->fParentId[positron.currentSlot],
+            userScoring, secondaries.positrons.fSoANextTracks->fTrackId[positron.currentSlot],
+            secondaries.positrons.fSoANextTracks->fParentId[positron.currentSlot],
             /*CreatorProcessId*/ short(0),
             /* positron*/ 1,                                                     // Particle type
             0,                                                                   // Step length
@@ -535,7 +537,7 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     // If there is some edep from cutting particles, record the step
     if ((edep > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep) {
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,            // Track ID
+                               soaTrack->fTrackId[slot],        // Track ID
                                soaTrack->fParentId[slot],       // parent Track ID
                                static_cast<short>(0),           // step defining process ID
                                2,                               // Particle type
@@ -592,9 +594,9 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
     G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
 
     // Perform the discrete interaction.
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
     // We might need one branched RNG state, prepare while threads are synchronized.
-    RanluxppDouble newRNG(currentTrack.rngState.Branch());
+    RanluxppDouble newRNG(soaTrack->fRngState[slot].Branch());
 
     const double theElCut = g4HepEmData.fTheMatCutData->fMatCutData[auxData.fMCIndex].fSecElProdCutE;
 
@@ -633,7 +635,8 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, electron.trackId, secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
+            userScoring, secondaries.electrons.fSoANextTracks->fTrackId[electron.currentSlot],
+            secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
             /*CreatorProcessId*/ short(1),
             /* electron*/ 0,                                                     // Particle type
             0,                                                                   // Step length
@@ -677,7 +680,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
     // If there is some edep from cutting particles, record the step
     if ((edep > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep) {
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,            // Track ID
+                               soaTrack->fTrackId[slot],        // Track ID
                                soaTrack->fParentId[slot],       // parent Track ID
                                static_cast<short>(1),           // step defining process ID
                                2,                               // Particle type
@@ -735,9 +738,9 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
     G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
 
     // Perform the discrete interaction.
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+    G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
     // We might need one branched RNG state, prepare while threads are synchronized.
-    RanluxppDouble newRNG(currentTrack.rngState.Branch());
+    RanluxppDouble newRNG(soaTrack->fRngState[slot].Branch());
 
     const double theElCut = g4HepEmData.fTheMatCutData->fMatCutData[auxData.fMCIndex].fSecElProdCutE;
 
@@ -774,7 +777,8 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
         adept_scoring::RecordHit(
-            userScoring, electron.trackId, secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
+            userScoring, secondaries.electrons.fSoANextTracks->fTrackId[electron.currentSlot],
+            secondaries.electrons.fSoANextTracks->fParentId[electron.currentSlot],
             /*CreatorProcessId*/ short(2),
             /* electron*/ 0,                                                     // Particle type
             0,                                                                   // Step length
@@ -808,7 +812,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
     // If there is some edep from cutting particles, record the step
     if ((edep > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep) {
       adept_scoring::RecordHit(userScoring,
-                               currentTrack.trackId,            // Track ID
+                               soaTrack->fTrackId[slot],        // Track ID
                                soaTrack->fParentId[slot],       // parent Track ID
                                static_cast<short>(2),           // step defining process ID
                                2,                               // Particle type

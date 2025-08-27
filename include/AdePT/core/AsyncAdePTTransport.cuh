@@ -201,8 +201,8 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
         slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, trackInfo.threadId,
-        trackInfo.parentId, trackInfo.eventId, seed, trackInfo.globalTime, static_cast<float>(trackInfo.localTime),
-        static_cast<float>(trackInfo.properTime), trackInfo.trackId, trackInfo.stepCounter);
+        trackInfo.parentId, trackInfo.eventId, seed, trackInfo.trackId, trackInfo.globalTime,
+        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.stepCounter);
     // track.currentSlot = slot;
     track.navState.Clear();
     track.navState       = trackinfo[i].navState;
@@ -235,6 +235,10 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fParentId[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fEventId[slot] =
         tracksAndSlots.soaInjected[particleType]->fEventId[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fRngState[slot] =
+        tracksAndSlots.soaInjected[particleType]->fRngState[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fTrackId[slot] =
+        tracksAndSlots.soaInjected[particleType]->fTrackId[injectionSlot];
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
     allQueues.queues[particleType].nextActive->push_back(slot);
@@ -322,7 +326,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].originNavState = track->originNavState;
       fromDevice[idx].leakStatus     = track->leakStatus;
       fromDevice[idx].parentId       = soaLeaks->fParentId[trackSlot];
-      fromDevice[idx].trackId        = track->trackId;
+      fromDevice[idx].trackId        = soaLeaks->fTrackId[trackSlot];
       fromDevice[idx].stepCounter    = track->stepCounter;
 
       leakedTracks->fSlotManager->MarkSlotForFreeing(trackSlot);
@@ -654,6 +658,8 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fThreadId, nSlot);
   gpuMalloc(hostSoA.fParentId, nSlot);
   gpuMalloc(hostSoA.fEventId, nSlot);
+  gpuMalloc(hostSoA.fRngState, nSlot);
+  gpuMalloc(hostSoA.fTrackId, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }

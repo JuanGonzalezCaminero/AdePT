@@ -16,7 +16,6 @@
 #endif
 
 struct SoATrack {
-  // uint fNSlot;
   double *fEkin;
   float *fSafety;
   float *fWeight;
@@ -26,11 +25,14 @@ struct SoATrack {
   short *fThreadId;
   uint64_t *fParentId;
   unsigned int *fEventId;
+  RanluxppDouble *fRngState;
+  uint64_t *fTrackId;
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight,
-                            short threadId, uint64_t parentId, unsigned int eventId, Args...)
+                            short threadId, uint64_t parentId, unsigned int eventId, uint64_t rngSeed, uint64_t trackId,
+                            Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -42,12 +44,14 @@ struct SoATrack {
     fThreadId[trackSlot] = threadId;
     fParentId[trackSlot] = parentId;
     fEventId[trackSlot]  = eventId;
+    fTrackId[trackSlot]  = trackId;
+    fRngState[trackSlot].SetSeed(rngSeed);
   }
 
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
                             const vecgeom::Vector3D<Precision> &dir, SoATrack *parentSoATrack, int parentTrackSlot,
-                            Args...)
+                            RanluxppDouble const &rngState, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -56,9 +60,11 @@ struct SoATrack {
     fPos[trackSlot] = pos;
     fDir[trackSlot] = dir;
 
+    fRngState[trackSlot] = rngState;
+
+    fTrackId[trackSlot]  = fRngState[trackSlot].IntRndm64();
     fWeight[trackSlot]   = parentSoATrack->fWeight[parentTrackSlot];
     fThreadId[trackSlot] = parentSoATrack->fThreadId[parentTrackSlot];
-
     fParentId[trackSlot] = parentSoATrack->fParentId[parentTrackSlot];
     fEventId[trackSlot]  = parentSoATrack->fEventId[parentTrackSlot];
   }
@@ -88,7 +94,7 @@ struct SoATrack {
     fSafety[trackSlot] = vecCore::math::Max(safe, 0.f);
   }
 
-  // __host__ __device__ double Uniform(int trackIdx) { return fRngState[trackIdx].Rndm(); }
+  __host__ __device__ double Uniform(int trackSlot) { return fRngState[trackSlot].Rndm(); }
 };
 
 // A data structure to represent a particle track. The particle type is implicit
@@ -96,7 +102,7 @@ struct SoATrack {
 struct Track {
   using Precision = vecgeom::Precision;
 
-  RanluxppDouble rngState;
+  // RanluxppDouble rngState;
   // double eKin{0.};
   double globalTime{0.};
 
@@ -132,7 +138,7 @@ struct Track {
   long hitsurfID{0};
 #endif
 
-  uint64_t trackId{0}; ///< track id (non-consecutive, reproducible)
+  // uint64_t trackId{0}; ///< track id (non-consecutive, reproducible)
   // uint64_t parentId{0}; // track id of the parent
 
   unsigned int currentSlot{0};
@@ -156,13 +162,12 @@ struct Track {
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
   __device__ Track(double eKin, double const position[3], double const direction[3], float weight, short threadId,
-                   uint64_t parentId, unsigned int eventId, uint64_t rngSeed /*, double eKin*/, double globalTime,
-                   float localTime, float properTime, uint64_t trackId, unsigned short stepCounter)
-      : /*eKin{eKin},*/ /*weight{weight},*/ globalTime{globalTime}, localTime{localTime}, properTime{properTime},
-        /*eventId{eventId},*/ trackId{trackId},
-        /*parentId{parentId},*/ /*threadId{threadId},*/ stepCounter{stepCounter}, looperCounter{0}, zeroStepCounter{0}
+                   uint64_t parentId, unsigned int eventId, uint64_t rngSeed, uint64_t trackId, double globalTime,
+                   float localTime, float properTime, unsigned short stepCounter)
+      : globalTime{globalTime}, localTime{localTime}, properTime{properTime}, stepCounter{stepCounter},
+        looperCounter{0}, zeroStepCounter{0}
   {
-    rngState.SetSeed(rngSeed);
+    // rngState.SetSeed(rngSeed);
     // pos        = {position[0], position[1], position[2]};
     // dir        = {direction[0], direction[1], direction[2]};
     leakStatus = LeakStatus::NoLeak;
@@ -172,13 +177,9 @@ struct Track {
   /// NB: The caller is responsible to branch a new RNG state.
   __device__ Track(double eKin, const vecgeom::Vector3D<Precision> &parentPos,
                    const vecgeom::Vector3D<Precision> &newDirection, SoATrack *parentSoATrack, int parentTrackSlot,
-                   RanluxppDouble const &rng_state /*, double eKin*/, const vecgeom::NavigationState &newNavState,
+                   RanluxppDouble const &rng_state, const vecgeom::NavigationState &newNavState,
                    const Track &parentTrack, const double globalTime)
-      : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, /*pos{parentPos}, dir{newDirection},*/
-        navState{newNavState}, originNavState{newNavState},
-        trackId{rngState.IntRndm64()}, /*eventId{parentTrack.eventId},*/
-                                       /*parentId{parentTrack.trackId},*/
-        /*threadId{parentTrack.threadId},*/ /*weight{parentTrack.weight},*/ stepCounter{0}, looperCounter{0},
+      : globalTime{globalTime}, navState{newNavState}, originNavState{newNavState}, stepCounter{0}, looperCounter{0},
         zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
@@ -199,7 +200,7 @@ struct Track {
     navState.Print();
   }
 
-  __host__ __device__ double Uniform() { return rngState.Rndm(); }
+  // __host__ __device__ double Uniform() { return rngState.Rndm(); }
 
   __host__ __device__ void InitAsSecondary(const vecgeom::Vector3D<Precision> &parentPos,
                                            const vecgeom::NavigationState &parentNavState, double gTime)
@@ -240,8 +241,8 @@ struct Track {
 
   __host__ __device__ void CopyTo(adeptint::TrackData &tdata, int pdg)
   {
-    tdata.pdg     = pdg;
-    tdata.trackId = trackId;
+    tdata.pdg = pdg;
+    // tdata.trackId = trackId;
     // tdata.parentId = parentId;
     // tdata.position[0]  = pos[0];
     // tdata.position[1]  = pos[1];

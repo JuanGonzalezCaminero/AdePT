@@ -24,11 +24,13 @@ struct SoATrack {
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
   short *fThreadId;
+  uint64_t *fParentId;
+  unsigned int *fEventId;
 
   // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight,
-                            short threadId, Args...)
+                            short threadId, uint64_t parentId, unsigned int eventId, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -38,8 +40,8 @@ struct SoATrack {
     fDir[trackSlot].Set(dir[0], dir[1], dir[2]);
     fWeight[trackSlot]   = weight;
     fThreadId[trackSlot] = threadId;
-
-    // printf("INSERTED dir (pointer): (%f, %f, %f)\n", dir[0], dir[1], dir[2]);
+    fParentId[trackSlot] = parentId;
+    fEventId[trackSlot]  = eventId;
   }
 
   template <typename... Args>
@@ -56,6 +58,9 @@ struct SoATrack {
 
     fWeight[trackSlot]   = parentSoATrack->fWeight[parentTrackSlot];
     fThreadId[trackSlot] = parentSoATrack->fThreadId[parentTrackSlot];
+
+    fParentId[trackSlot] = parentSoATrack->fParentId[parentTrackSlot];
+    fEventId[trackSlot]  = parentSoATrack->fEventId[parentTrackSlot];
   }
 
   /// @brief Get recomputed cached safety ay a given track position
@@ -127,12 +132,12 @@ struct Track {
   long hitsurfID{0};
 #endif
 
-  uint64_t trackId{0};  ///< track id (non-consecutive, reproducible)
-  uint64_t parentId{0}; // track id of the parent
+  uint64_t trackId{0}; ///< track id (non-consecutive, reproducible)
+  // uint64_t parentId{0}; // track id of the parent
 
   unsigned int currentSlot{0};
 
-  unsigned int eventId{0};
+  // unsigned int eventId{0};
   // short threadId{-1};
   unsigned short stepCounter{0};
   unsigned short looperCounter{0};
@@ -151,11 +156,11 @@ struct Track {
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
   __device__ Track(double eKin, double const position[3], double const direction[3], float weight, short threadId,
-                   uint64_t rngSeed /*, double eKin*/, double globalTime, float localTime, float properTime,
-                   unsigned int eventId, uint64_t trackId, uint64_t parentId, unsigned short stepCounter)
+                   uint64_t parentId, unsigned int eventId, uint64_t rngSeed /*, double eKin*/, double globalTime,
+                   float localTime, float properTime, uint64_t trackId, unsigned short stepCounter)
       : /*eKin{eKin},*/ /*weight{weight},*/ globalTime{globalTime}, localTime{localTime}, properTime{properTime},
-        eventId{eventId}, trackId{trackId}, parentId{parentId}, /*threadId{threadId},*/ stepCounter{stepCounter},
-        looperCounter{0}, zeroStepCounter{0}
+        /*eventId{eventId},*/ trackId{trackId},
+        /*parentId{parentId},*/ /*threadId{threadId},*/ stepCounter{stepCounter}, looperCounter{0}, zeroStepCounter{0}
   {
     rngState.SetSeed(rngSeed);
     // pos        = {position[0], position[1], position[2]};
@@ -170,19 +175,20 @@ struct Track {
                    RanluxppDouble const &rng_state /*, double eKin*/, const vecgeom::NavigationState &newNavState,
                    const Track &parentTrack, const double globalTime)
       : rngState{rng_state}, /*eKin{eKin},*/ globalTime{globalTime}, /*pos{parentPos}, dir{newDirection},*/
-        navState{newNavState}, originNavState{newNavState}, trackId{rngState.IntRndm64()}, eventId{parentTrack.eventId},
-        parentId{parentTrack.trackId},
+        navState{newNavState}, originNavState{newNavState},
+        trackId{rngState.IntRndm64()}, /*eventId{parentTrack.eventId},*/
+                                       /*parentId{parentTrack.trackId},*/
         /*threadId{parentTrack.threadId},*/ /*weight{parentTrack.weight},*/ stepCounter{0}, looperCounter{0},
         zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
 
-  __host__ __device__ VECGEOM_FORCE_INLINE bool Matches(int ievt, size_t itrack, size_t stepmin = 0,
-                                                        size_t stepmax = 100000) const
-  {
-    bool match_event = (ievt < 0) || (ievt == eventId);
-    return match_event && (itrack == trackId) && (stepCounter >= stepmin) && (stepCounter <= stepmax);
-  }
+  // __host__ __device__ VECGEOM_FORCE_INLINE bool Matches(int ievt, size_t itrack, size_t stepmin = 0,
+  //                                                       size_t stepmax = 100000) const
+  // {
+  //   bool match_event = (ievt < 0) || (ievt == eventId);
+  //   return match_event && (itrack == trackId) && (stepCounter >= stepmin) && (stepCounter <= stepmax);
+  // }
 
   __host__ __device__ void Print(const char *label) const
   {
@@ -234,9 +240,9 @@ struct Track {
 
   __host__ __device__ void CopyTo(adeptint::TrackData &tdata, int pdg)
   {
-    tdata.pdg      = pdg;
-    tdata.trackId  = trackId;
-    tdata.parentId = parentId;
+    tdata.pdg     = pdg;
+    tdata.trackId = trackId;
+    // tdata.parentId = parentId;
     // tdata.position[0]  = pos[0];
     // tdata.position[1]  = pos[1];
     // tdata.position[2]  = pos[2];

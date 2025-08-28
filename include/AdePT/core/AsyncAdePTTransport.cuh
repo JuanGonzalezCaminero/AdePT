@@ -683,11 +683,22 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
   gpuMalloc(hostSoA.fDir, nSlot);
+
+  gpuMalloc(hostSoA.fPreStepEKin, nSlot);
+  gpuMalloc(hostSoA.fGeometryStepLength, nSlot);
+  gpuMalloc(hostSoA.fSafeLength, nSlot);
+
   gpuMalloc(hostSoA.fGlobalTime, nSlot);
   gpuMalloc(hostSoA.fLocalTime, nSlot);
   gpuMalloc(hostSoA.fProperTime, nSlot);
   gpuMalloc(hostSoA.fNavState, nSlot);
   gpuMalloc(hostSoA.fOriginNavState, nSlot);
+
+  gpuMalloc(hostSoA.fNextState, nSlot);
+  gpuMalloc(hostSoA.fPreStepNavState, nSlot);
+  gpuMalloc(hostSoA.fPreStepPos, nSlot);
+  gpuMalloc(hostSoA.fPreStepDir, nSlot);
+
   gpuMalloc(hostSoA.fParentId, nSlot);
   gpuMalloc(hostSoA.fTrackId, nSlot);
   gpuMalloc(hostSoA.fEventId, nSlot);
@@ -695,6 +706,12 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fStepCounter, nSlot);
   gpuMalloc(hostSoA.fLooperCounter, nSlot);
   gpuMalloc(hostSoA.fZeroStepCounter, nSlot);
+
+  gpuMalloc(hostSoA.fHitsurfID, nSlot);
+  gpuMalloc(hostSoA.fPropagated, nSlot);
+  gpuMalloc(hostSoA.fRestrictedPhysicalStepLength, nSlot);
+  gpuMalloc(hostSoA.fStopped, nSlot);
+
   gpuMalloc(hostSoA.fNumIALeft, nSlot);
   gpuMalloc(hostSoA.fInitialRange, nSlot);
   gpuMalloc(hostSoA.fDynamicRangeFactor, nSlot);

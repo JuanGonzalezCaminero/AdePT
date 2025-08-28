@@ -108,9 +108,9 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
 
     VolAuxData const &auxData = AsyncAdePT::gVolAuxData[lvolID]; // FIXME unify VolAuxData
 
-    currentTrack.preStepEKin = soaTrack->fEkin[slot];
-    currentTrack.preStepPos  = soaTrack->fPos[slot];
-    currentTrack.preStepDir  = soaTrack->fDir[slot];
+    soaTrack->fPreStepEKin[slot] = soaTrack->fEkin[slot];
+    soaTrack->fPreStepPos[slot]  = soaTrack->fPos[slot];
+    soaTrack->fPreStepDir[slot]  = soaTrack->fDir[slot];
     soaTrack->fStepCounter[slot]++;
     bool printErrors = false;
     if (soaTrack->fStepCounter[slot] >= maxSteps || soaTrack->fZeroStepCounter[slot] > kStepsStuckKill) {
@@ -200,9 +200,9 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
       }
     }
     theTrack->SetSafety(safety);
-    currentTrack.restrictedPhysicalStepLength = false;
+    soaTrack->fRestrictedPhysicalStepLength[slot] = false;
 
-    currentTrack.safeLength = 0.;
+    soaTrack->fSafeLength[slot] = 0.;
 
     if (gMagneticField) {
 
@@ -213,17 +213,17 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
       vecgeom::Vector3D<double> momentumVec          = momentumMag * soaTrack->fDir[slot];
       vecgeom::Vector3D<rk_integration_t> B0fieldVec = magneticField.Evaluate(
           soaTrack->fPos[slot][0], soaTrack->fPos[slot][1], soaTrack->fPos[slot][2]); // Field value at starting point
-      currentTrack.safeLength =
+      soaTrack->fSafeLength[slot] =
           fieldPropagatorRungeKutta<Field_t, RkDriver_t, rk_integration_t,
                                     AdePTNavigator>::ComputeSafeLength /*<Real_t>*/ (momentumVec, B0fieldVec, Charge);
 
       constexpr int MaxSafeLength = 10;
-      double limit                = MaxSafeLength * currentTrack.safeLength;
+      double limit                = MaxSafeLength * soaTrack->fSafeLength[slot];
       limit                       = safety > limit ? safety : limit;
 
       if (physicalStepLength > limit) {
-        physicalStepLength                        = limit;
-        currentTrack.restrictedPhysicalStepLength = true;
+        physicalStepLength                            = limit;
+        soaTrack->fRestrictedPhysicalStepLength[slot] = true;
         elTrack.SetPStepLength(physicalStepLength);
 
         // Note: We are limiting the true step length, which is converted to
@@ -283,17 +283,17 @@ __global__ void ElectronPropagation(Track *electrons, SoATrack *soaTrack, G4HepE
     G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     // Check if there's a volume boundary in between.
-    currentTrack.propagated = true;
-    currentTrack.hitsurfID  = -1;
-    bool zero_first_step    = false;
+    soaTrack->fPropagated[slot] = true;
+    soaTrack->fHitsurfID[slot]  = -1;
+    bool zero_first_step        = false;
 
     if (gMagneticField) {
       int iterDone = -1;
-      currentTrack.geometryStepLength =
+      soaTrack->fGeometryStepLength[slot] =
           fieldPropagatorRungeKutta<Field_t, RkDriver_t, Precision, AdePTNavigator>::ComputeStepAndNextVolume(
               magneticField, soaTrack->fEkin[slot], restMass, Charge, theTrack->GetGStepLength(),
-              currentTrack.safeLength, soaTrack->fPos[slot], soaTrack->fDir[slot], soaTrack->fNavState[slot],
-              currentTrack.nextState, currentTrack.hitsurfID, currentTrack.propagated,
+              soaTrack->fSafeLength[slot], soaTrack->fPos[slot], soaTrack->fDir[slot], soaTrack->fNavState[slot],
+              soaTrack->fNextState[slot], soaTrack->fHitsurfID[slot], soaTrack->fPropagated[slot],
               /*lengthDone,*/ soaTrack->fSafety[slot],
               // activeSize < 100 ? max_iterations : max_iters_tail ), // Was
               max_iterations, iterDone, slot, zero_first_step);
@@ -304,36 +304,37 @@ __global__ void ElectronPropagation(Track *electrons, SoATrack *soaTrack, G4HepE
 
     } else {
 #ifdef ADEPT_USE_SURF
-      currentTrack.geometryStepLength = AdePTNavigator::ComputeStepAndNextVolume(
+      soaTrack->fGeometryStepLength[slot] = AdePTNavigator::ComputeStepAndNextVolume(
           soaTrack->fPos[slot], soaTrack->fDir[slot], theTrack->GetGStepLength(), soaTrack->fNavState[slot],
-          currentTrack.nextState, currentTrack.hitsurfID);
+          soaTrack->fNextState[slot], soaTrack->fHitsurfID[slot]);
 #else
-      currentTrack.geometryStepLength = AdePTNavigator::ComputeStepAndNextVolume(
+      soaTrack->fGeometryStepLength[slot] = AdePTNavigator::ComputeStepAndNextVolume(
           soaTrack->fPos[slot], soaTrack->fDir[slot], theTrack->GetGStepLength(), soaTrack->fNavState[slot],
-          currentTrack.nextState, kPushDistance);
+          soaTrack->fNextState[slot], kPushDistance);
 #endif
-      soaTrack->fPos[slot] += currentTrack.geometryStepLength * soaTrack->fDir[slot];
+      soaTrack->fPos[slot] += soaTrack->fGeometryStepLength[slot] * soaTrack->fDir[slot];
     }
 
-    if (currentTrack.geometryStepLength < kPushStuck && currentTrack.geometryStepLength < theTrack->GetGStepLength()) {
+    if (soaTrack->fGeometryStepLength[slot] < kPushStuck &&
+        soaTrack->fGeometryStepLength[slot] < theTrack->GetGStepLength()) {
       soaTrack->fZeroStepCounter[slot]++;
       if (soaTrack->fZeroStepCounter[slot] > kStepsStuckPush) soaTrack->fPos[slot] += kPushStuck * soaTrack->fDir[slot];
     } else
       soaTrack->fZeroStepCounter[slot] = 0;
 
     // punish miniscule steps by increasing the looperCounter by 10
-    if (currentTrack.geometryStepLength < 100 * vecgeom::kTolerance) soaTrack->fLooperCounter[slot] += 10;
+    if (soaTrack->fGeometryStepLength[slot] < 100 * vecgeom::kTolerance) soaTrack->fLooperCounter[slot] += 10;
 
     // Set boundary state in navState so the next step and secondaries get the
     // correct information (navState = nextState only if relocated
     // in case of a boundary; see below)
-    soaTrack->fNavState[slot].SetBoundaryState(currentTrack.nextState.IsOnBoundary());
-    if (currentTrack.nextState.IsOnBoundary()) soaTrack->SetSafety(slot, soaTrack->fPos[slot], 0.);
+    soaTrack->fNavState[slot].SetBoundaryState(soaTrack->fNextState[slot].IsOnBoundary());
+    if (soaTrack->fNextState[slot].IsOnBoundary()) soaTrack->SetSafety(slot, soaTrack->fPos[slot], 0.);
 
     // Propagate information from geometrical step to MSC.
     theTrack->SetDirection(soaTrack->fDir[slot].x(), soaTrack->fDir[slot].y(), soaTrack->fDir[slot].z());
-    theTrack->SetGStepLength(currentTrack.geometryStepLength);
-    theTrack->SetOnBoundary(currentTrack.nextState.IsOnBoundary());
+    theTrack->SetGStepLength(soaTrack->fGeometryStepLength[slot]);
+    theTrack->SetOnBoundary(soaTrack->fNextState[slot].IsOnBoundary());
   }
 }
 
@@ -359,12 +360,12 @@ __global__ void ElectronMSC(Track *electrons, SoATrack *soaTrack, G4HepEmElectro
     G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     // Apply continuous effects.
-    currentTrack.stopped = G4HepEmElectronManager::PerformContinuous(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
+    soaTrack->fStopped[slot] = G4HepEmElectronManager::PerformContinuous(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
 
     // Collect the direction change and displacement by MSC.
     const double *direction = theTrack->GetDirection();
     soaTrack->fDir[slot].Set(direction[0], direction[1], direction[2]);
-    if (!currentTrack.nextState.IsOnBoundary()) {
+    if (!soaTrack->fNextState[slot].IsOnBoundary()) {
       const double *mscDisplacement = mscData->GetDisplacement();
       vecgeom::Vector3D<Precision> displacement(mscDisplacement[0], mscDisplacement[1], mscDisplacement[2]);
       const double dLength2            = displacement.Length2();
@@ -499,15 +500,15 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
     }
 
     // Set Non-stopped, on-boundary tracks for relocation
-    if (currentTrack.nextState.IsOnBoundary() && !currentTrack.stopped) {
+    if (soaTrack->fNextState[slot].IsOnBoundary() && !soaTrack->fStopped[slot]) {
       // Add particle to relocation queue
       interactionQueues.queues[4]->push_back(slot);
       continue;
     }
 
     // Now check whether the non-relocating tracks reached an interaction
-    if (!currentTrack.stopped) {
-      if (!currentTrack.propagated || currentTrack.restrictedPhysicalStepLength) {
+    if (!soaTrack->fStopped[slot]) {
+      if (!soaTrack->fPropagated[slot] || soaTrack->fRestrictedPhysicalStepLength[slot]) {
         // Did not yet reach the interaction point due to error in the magnetic
         // field propagation. Try again next time.
 
@@ -518,7 +519,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
                    "physicsStepLength=%E "
                    "safety=%E\n",
                    soaTrack->fEkin[slot], soaTrack->fEventId[slot], soaTrack->fLooperCounter[slot], energyDeposit,
-                   currentTrack.geometryStepLength, theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
+                   soaTrack->fGeometryStepLength[slot], theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
           continue;
         }
 
@@ -556,7 +557,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
       // reset Looper counter if limited by discrete interaction or MSC
       soaTrack->fLooperCounter[slot] = 0;
 
-      if (!currentTrack.stopped) {
+      if (!soaTrack->fStopped[slot]) {
         // Reset number of interaction left for the winner discrete process.
         // (Will be resampled in the next iteration.)
         soaTrack->fNumIALeft[slot].values[theTrack->GetWinnerProcessIndex()] = -1.0;
@@ -586,15 +587,15 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
                                  energyDeposit,                                         // Total Edep
                                  soaTrack->fWeight[slot],                               // Track weight
                                  soaTrack->fNavState[slot],                             // Pre-step point navstate
-                                 currentTrack.preStepPos,                               // Pre-step point position
-                                 currentTrack.preStepDir,     // Pre-step point momentum direction
-                                 currentTrack.preStepEKin,    // Pre-step point kinetic energy
-                                 currentTrack.nextState,      // Post-step point navstate
-                                 soaTrack->fPos[slot],        // Post-step point position
-                                 soaTrack->fDir[slot],        // Post-step point momentum direction
-                                 soaTrack->fEkin[slot],       // Post-step point kinetic energy
-                                 soaTrack->fGlobalTime[slot], // global time
-                                 soaTrack->fLocalTime[slot],  // local time
+                                 soaTrack->fPreStepPos[slot],                           // Pre-step point position
+                                 soaTrack->fPreStepDir[slot],  // Pre-step point momentum direction
+                                 soaTrack->fPreStepEKin[slot], // Pre-step point kinetic energy
+                                 soaTrack->fNextState[slot],   // Post-step point navstate
+                                 soaTrack->fPos[slot],         // Post-step point position
+                                 soaTrack->fDir[slot],         // Post-step point momentum direction
+                                 soaTrack->fEkin[slot],        // Post-step point kinetic energy
+                                 soaTrack->fGlobalTime[slot],  // global time
+                                 soaTrack->fLocalTime[slot],   // local time
                                  soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                  isLastStep,                                          // whether this was the last step
                                  soaTrack->fStepCounter[slot]);                       // stepcounter
@@ -690,23 +691,23 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
                "physicsStepLength=%E "
                "safety=%E\n",
                soaTrack->fEkin[slot], soaTrack->fEventId[slot], soaTrack->fLooperCounter[slot], energyDeposit,
-               currentTrack.geometryStepLength, theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
+               soaTrack->fGeometryStepLength[slot], theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
       continue;
     }
 
-    if (!currentTrack.nextState.IsOutside()) {
+    if (!soaTrack->fNextState[slot].IsOutside()) {
       // Mark the particle. We need to change its navigation state to the next volume before enqueuing it
       // This will happen after recording the step
       // Relocate
       cross_boundary = true;
 #ifdef ADEPT_USE_SURF
-      AdePTNavigator::RelocateToNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], currentTrack.hitsurfID,
-                                           currentTrack.nextState);
+      AdePTNavigator::RelocateToNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], soaTrack->fHitsurfID[slot],
+                                           soaTrack->fNextState[slot]);
 #else
-      AdePTNavigator::RelocateToNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], currentTrack.nextState);
+      AdePTNavigator::RelocateToNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], soaTrack->fNextState[slot]);
 #endif
       // Set the last exited state to be the one before crossing
-      currentTrack.nextState.SetLastExited(soaTrack->fNavState[slot].GetState());
+      soaTrack->fNextState[slot].SetLastExited(soaTrack->fNavState[slot].GetState());
     } else {
       // Particle left the world, don't enqueue it and release the slot
       // slotManager.MarkSlotForFreeing(slot);
@@ -724,10 +725,10 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
                                energyDeposit,                         // Total Edep
                                soaTrack->fWeight[slot],               // Track weight
                                soaTrack->fNavState[slot],             // Pre-step point navstate
-                               currentTrack.preStepPos,               // Pre-step point position
-                               currentTrack.preStepDir,               // Pre-step point momentum direction
-                               currentTrack.preStepEKin,              // Pre-step point kinetic energy
-                               currentTrack.nextState,                // Post-step point navstate
+                               soaTrack->fPreStepPos[slot],           // Pre-step point position
+                               soaTrack->fPreStepDir[slot],           // Pre-step point momentum direction
+                               soaTrack->fPreStepEKin[slot],          // Pre-step point kinetic energy
+                               soaTrack->fNextState[slot],            // Post-step point navstate
                                soaTrack->fPos[slot],                  // Post-step point position
                                soaTrack->fDir[slot],                  // Post-step point momentum direction
                                soaTrack->fEkin[slot],                 // Post-step point kinetic energy
@@ -739,7 +740,7 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
 
     if (cross_boundary) {
       // Move to the next boundary now that the Step is recorded
-      soaTrack->fNavState[slot] = currentTrack.nextState;
+      soaTrack->fNavState[slot] = soaTrack->fNextState[slot];
       // Check if the next volume belongs to the GPU region and push it to the appropriate queue
       const int nextlvolID          = soaTrack->fNavState[slot].GetLogicalId();
       VolAuxData const &nextauxData = AsyncAdePT::gVolAuxData[nextlvolID];
@@ -974,7 +975,7 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
       if (IsElectron) {
         energyDeposit += soaTrack->fEkin[slot];
       }
-      currentTrack.stopped = true;
+      soaTrack->fStopped[slot] = true;
       PerformStoppedAnnihilation<IsElectron, Scoring>(slot, currentTrack, soaTrack, secondaries, energyDeposit,
                                                       slotManager, ApplyCuts, theGammaCut, userScoring, returnLastStep);
     } else {
@@ -993,10 +994,10 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
                                energyDeposit,                         // Total Edep
                                soaTrack->fWeight[slot],               // Track weight
                                soaTrack->fNavState[slot],             // Pre-step point navstate
-                               currentTrack.preStepPos,               // Pre-step point position
-                               currentTrack.preStepDir,               // Pre-step point momentum direction
-                               currentTrack.preStepEKin,              // Pre-step point kinetic energy
-                               currentTrack.nextState,                // Post-step point navstate
+                               soaTrack->fPreStepPos[slot],           // Pre-step point position
+                               soaTrack->fPreStepDir[slot],           // Pre-step point momentum direction
+                               soaTrack->fPreStepEKin[slot],          // Pre-step point kinetic energy
+                               soaTrack->fNextState[slot],            // Post-step point navstate
                                soaTrack->fPos[slot],                  // Post-step point position
                                soaTrack->fDir[slot],                  // Post-step point momentum direction
                                soaTrack->fEkin[slot],                 // Post-step point kinetic energy
@@ -1126,7 +1127,7 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
       if (IsElectron) {
         energyDeposit += soaTrack->fEkin[slot];
       }
-      currentTrack.stopped = true;
+      soaTrack->fStopped[slot] = true;
       PerformStoppedAnnihilation<IsElectron, Scoring>(slot, currentTrack, soaTrack, secondaries, energyDeposit,
                                                       slotManager, ApplyCuts, theGammaCut, userScoring, returnLastStep);
     } else {
@@ -1145,10 +1146,10 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
                                energyDeposit,                         // Total Edep
                                soaTrack->fWeight[slot],               // Track weight
                                soaTrack->fNavState[slot],             // Pre-step point navstate
-                               currentTrack.preStepPos,               // Pre-step point position
-                               currentTrack.preStepDir,               // Pre-step point momentum direction
-                               currentTrack.preStepEKin,              // Pre-step point kinetic energy
-                               currentTrack.nextState,                // Post-step point navstate
+                               soaTrack->fPreStepPos[slot],           // Pre-step point position
+                               soaTrack->fPreStepDir[slot],           // Pre-step point momentum direction
+                               soaTrack->fPreStepEKin[slot],          // Pre-step point kinetic energy
+                               soaTrack->fNextState[slot],            // Post-step point navstate
                                soaTrack->fPos[slot],                  // Post-step point position
                                soaTrack->fDir[slot],                  // Post-step point momentum direction
                                soaTrack->fEkin[slot],                 // Post-step point kinetic energy
@@ -1289,23 +1290,23 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               soaTrack->fTrackId[slot],    // Track ID
-                               soaTrack->fParentId[slot],   // parent Track ID
-                               static_cast<short>(2),       // step limiting process ID
-                               static_cast<char>(1),        // Particle type
-                               elTrack.GetPStepLength(),    // Step length
-                               energyDeposit,               // Total Edep
-                               soaTrack->fWeight[slot],     // Track weight
-                               soaTrack->fNavState[slot],   // Pre-step point navstate
-                               currentTrack.preStepPos,     // Pre-step point position
-                               currentTrack.preStepDir,     // Pre-step point momentum direction
-                               currentTrack.preStepEKin,    // Pre-step point kinetic energy
-                               currentTrack.nextState,      // Post-step point navstate
-                               soaTrack->fPos[slot],        // Post-step point position
-                               soaTrack->fDir[slot],        // Post-step point momentum direction
-                               soaTrack->fEkin[slot],       // Post-step point kinetic energy
-                               soaTrack->fGlobalTime[slot], // global time
-                               soaTrack->fLocalTime[slot],  // local time
+                               soaTrack->fTrackId[slot],     // Track ID
+                               soaTrack->fParentId[slot],    // parent Track ID
+                               static_cast<short>(2),        // step limiting process ID
+                               static_cast<char>(1),         // Particle type
+                               elTrack.GetPStepLength(),     // Step length
+                               energyDeposit,                // Total Edep
+                               soaTrack->fWeight[slot],      // Track weight
+                               soaTrack->fNavState[slot],    // Pre-step point navstate
+                               soaTrack->fPreStepPos[slot],  // Pre-step point position
+                               soaTrack->fPreStepDir[slot],  // Pre-step point momentum direction
+                               soaTrack->fPreStepEKin[slot], // Pre-step point kinetic energy
+                               soaTrack->fNextState[slot],   // Post-step point navstate
+                               soaTrack->fPos[slot],         // Post-step point position
+                               soaTrack->fDir[slot],         // Post-step point momentum direction
+                               soaTrack->fEkin[slot],        // Post-step point kinetic energy
+                               soaTrack->fGlobalTime[slot],  // global time
+                               soaTrack->fLocalTime[slot],   // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
                                soaTrack->fStepCounter[slot]);                       // stepcounter
@@ -1354,23 +1355,23 @@ __global__ void PositronStoppedAnnihilation(Track *electrons, SoATrack *soaTrack
     // Record the step. Edep includes the continuous energy loss and edep from secondaries which were cut
     if ((energyDeposit > 0 && auxData.fSensIndex >= 0) || returnAllSteps || returnLastStep)
       adept_scoring::RecordHit(userScoring,
-                               soaTrack->fTrackId[slot],    // Track ID
-                               soaTrack->fParentId[slot],   // parent Track ID
-                               static_cast<short>(2),       // step limiting process ID
-                               static_cast<char>(1),        // Particle type
-                               elTrack.GetPStepLength(),    // Step length
-                               energyDeposit,               // Total Edep
-                               soaTrack->fWeight[slot],     // Track weight
-                               soaTrack->fNavState[slot],   // Pre-step point navstate
-                               currentTrack.preStepPos,     // Pre-step point position
-                               currentTrack.preStepDir,     // Pre-step point momentum direction
-                               currentTrack.preStepEKin,    // Pre-step point kinetic energy
-                               currentTrack.nextState,      // Post-step point navstate
-                               soaTrack->fPos[slot],        // Post-step point position
-                               soaTrack->fDir[slot],        // Post-step point momentum direction
-                               soaTrack->fEkin[slot],       // Post-step point kinetic energy
-                               soaTrack->fGlobalTime[slot], // global time
-                               soaTrack->fLocalTime[slot],  // local time
+                               soaTrack->fTrackId[slot],     // Track ID
+                               soaTrack->fParentId[slot],    // parent Track ID
+                               static_cast<short>(2),        // step limiting process ID
+                               static_cast<char>(1),         // Particle type
+                               elTrack.GetPStepLength(),     // Step length
+                               energyDeposit,                // Total Edep
+                               soaTrack->fWeight[slot],      // Track weight
+                               soaTrack->fNavState[slot],    // Pre-step point navstate
+                               soaTrack->fPreStepPos[slot],  // Pre-step point position
+                               soaTrack->fPreStepDir[slot],  // Pre-step point momentum direction
+                               soaTrack->fPreStepEKin[slot], // Pre-step point kinetic energy
+                               soaTrack->fNextState[slot],   // Post-step point navstate
+                               soaTrack->fPos[slot],         // Post-step point position
+                               soaTrack->fDir[slot],         // Post-step point momentum direction
+                               soaTrack->fEkin[slot],        // Post-step point kinetic energy
+                               soaTrack->fGlobalTime[slot],  // global time
+                               soaTrack->fLocalTime[slot],   // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
                                soaTrack->fStepCounter[slot]);                       // stepcounter

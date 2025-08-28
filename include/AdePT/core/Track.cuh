@@ -24,6 +24,12 @@ struct SoATrack {
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
   double *fGlobalTime;
+#ifdef USE_SPLIT_KERNELS
+  double *fPreStepEKin{0};
+  // Variables used to store navigation results
+  double *fGeometryStepLength{0};
+  double *fSafeLength{0};
+#endif
   float *fLocalTime;
   float *fProperTime;
   struct {
@@ -35,6 +41,12 @@ struct SoATrack {
   LeakStatus *fLeakStatus;
   vecgeom::NavigationState *fNavState;
   vecgeom::NavigationState *fOriginNavState;
+#ifdef USE_SPLIT_KERNELS
+  vecgeom::NavigationState *fNextState;
+  vecgeom::NavigationState *fPreStepNavState;
+  vecgeom::Vector3D<Precision> *fPreStepPos;
+  vecgeom::Vector3D<Precision> *fPreStepDir;
+#endif
   uint64_t *fParentId;
   uint64_t *fTrackId;
   unsigned int *fEventId;
@@ -42,7 +54,13 @@ struct SoATrack {
   unsigned short *fStepCounter;
   unsigned short *fLooperCounter;
   unsigned short *fZeroStepCounter;
-
+#ifdef USE_SPLIT_KERNELS
+  long *fHitsurfID;
+  bool *fPropagated;
+  // Variables used to store results from G4HepEM
+  bool *fRestrictedPhysicalStepLength;
+  bool *fStopped;
+#endif
   // Initialize a GPU track coming from CPU
   __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], double globalTime,
                             float localTime, float properTime, float weight, uint64_t rngSeed, uint64_t parentId,
@@ -72,6 +90,11 @@ struct SoATrack {
     fDynamicRangeFactor[trackSlot] = 0.04;
     fTlimitMin[trackSlot]          = 1.0E-7;
     fLeakStatus[trackSlot]         = LeakStatus::NoLeak;
+#ifdef USE_SPLIT_KERNELS
+    fPropagated[trackSlot]                   = false;
+    fRestrictedPhysicalStepLength[trackSlot] = false;
+    fStopped[trackSlot]                      = false;
+#endif
   }
 
   // Construct a track from a parent track
@@ -142,28 +165,28 @@ struct SoATrack {
 struct Track {
   using Precision = vecgeom::Precision;
 
-#ifdef USE_SPLIT_KERNELS
-  // Variables used to store track info needed for scoring
-  vecgeom::NavigationState nextState;
-  vecgeom::NavigationState preStepNavState;
-  vecgeom::Vector3D<Precision> preStepPos;
-  vecgeom::Vector3D<Precision> preStepDir;
-  double preStepEKin{0};
-  // Variables used to store navigation results
-  double geometryStepLength{0};
-  double safeLength{0};
-  long hitsurfID{0};
-#endif
+  // #ifdef USE_SPLIT_KERNELS
+  //   // Variables used to store track info needed for scoring
+  //   vecgeom::NavigationState nextState;
+  //   vecgeom::NavigationState preStepNavState;
+  //   vecgeom::Vector3D<Precision> preStepPos;
+  //   vecgeom::Vector3D<Precision> preStepDir;
+  //   double preStepEKin{0};
+  //   // Variables used to store navigation results
+  //   double geometryStepLength{0};
+  //   double safeLength{0};
+  //   long hitsurfID{0};
+  // #endif
 
   unsigned int currentSlot{0};
 
-#ifdef USE_SPLIT_KERNELS
-  bool propagated{false};
+  // #ifdef USE_SPLIT_KERNELS
+  //   bool propagated{false};
 
-  // Variables used to store results from G4HepEM
-  bool restrictedPhysicalStepLength{false};
-  bool stopped{false};
-#endif
+  //   // Variables used to store results from G4HepEM
+  //   bool restrictedPhysicalStepLength{false};
+  //   bool stopped{false};
+  // #endif
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.

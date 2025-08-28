@@ -43,23 +43,26 @@ namespace AsyncAdePT {
 __device__ __forceinline__ void CopyTrack(int slotSrc, int slotDst, Track *src, Track *dst, SoATrack *soaSrc,
                                           SoATrack *soaDst)
 {
-  dst[slotDst]                     = src[slotSrc];
-  soaDst->fEkin[slotDst]           = soaSrc->fEkin[slotSrc];
-  soaDst->fSafety[slotDst]         = soaSrc->fSafety[slotSrc];
-  soaDst->fSafetyPos[slotDst]      = soaSrc->fSafetyPos[slotSrc];
-  soaDst->fPos[slotDst]            = soaSrc->fPos[slotSrc];
-  soaDst->fDir[slotDst]            = soaSrc->fDir[slotSrc];
-  soaDst->fGlobalTime[slotDst]     = soaSrc->fGlobalTime[slotSrc];
-  soaDst->fLocalTime[slotDst]      = soaSrc->fLocalTime[slotSrc];
-  soaDst->fProperTime[slotDst]     = soaSrc->fProperTime[slotSrc];
-  soaDst->fNavState[slotDst]       = soaSrc->fNavState[slotSrc];
-  soaDst->fOriginNavState[slotDst] = soaSrc->fOriginNavState[slotSrc];
-  soaDst->fWeight[slotDst]         = soaSrc->fWeight[slotSrc];
-  soaDst->fThreadId[slotDst]       = soaSrc->fThreadId[slotSrc];
-  soaDst->fParentId[slotDst]       = soaSrc->fParentId[slotSrc];
-  soaDst->fEventId[slotDst]        = soaSrc->fEventId[slotSrc];
-  soaDst->fRngState[slotDst]       = soaSrc->fRngState[slotSrc];
-  soaDst->fTrackId[slotDst]        = soaSrc->fTrackId[slotSrc];
+  dst[slotDst]                      = src[slotSrc];
+  soaDst->fEkin[slotDst]            = soaSrc->fEkin[slotSrc];
+  soaDst->fSafety[slotDst]          = soaSrc->fSafety[slotSrc];
+  soaDst->fSafetyPos[slotDst]       = soaSrc->fSafetyPos[slotSrc];
+  soaDst->fPos[slotDst]             = soaSrc->fPos[slotSrc];
+  soaDst->fDir[slotDst]             = soaSrc->fDir[slotSrc];
+  soaDst->fGlobalTime[slotDst]      = soaSrc->fGlobalTime[slotSrc];
+  soaDst->fLocalTime[slotDst]       = soaSrc->fLocalTime[slotSrc];
+  soaDst->fProperTime[slotDst]      = soaSrc->fProperTime[slotSrc];
+  soaDst->fNavState[slotDst]        = soaSrc->fNavState[slotSrc];
+  soaDst->fOriginNavState[slotDst]  = soaSrc->fOriginNavState[slotSrc];
+  soaDst->fWeight[slotDst]          = soaSrc->fWeight[slotSrc];
+  soaDst->fThreadId[slotDst]        = soaSrc->fThreadId[slotSrc];
+  soaDst->fParentId[slotDst]        = soaSrc->fParentId[slotSrc];
+  soaDst->fEventId[slotDst]         = soaSrc->fEventId[slotSrc];
+  soaDst->fRngState[slotDst]        = soaSrc->fRngState[slotSrc];
+  soaDst->fTrackId[slotDst]         = soaSrc->fTrackId[slotSrc];
+  soaDst->fStepCounter[slotDst]     = soaSrc->fStepCounter[slotSrc];
+  soaDst->fLooperCounter[slotDst]   = soaSrc->fLooperCounter[slotSrc];
+  soaDst->fZeroStepCounter[slotDst] = soaSrc->fZeroStepCounter[slotSrc];
 }
 
 template <bool IsElectron>
@@ -103,13 +106,13 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
     currentTrack.preStepEKin = soaTrack->fEkin[slot];
     currentTrack.preStepPos  = soaTrack->fPos[slot];
     currentTrack.preStepDir  = soaTrack->fDir[slot];
-    currentTrack.stepCounter++;
+    soaTrack->fStepCounter[slot]++;
     bool printErrors = false;
-    if (currentTrack.stepCounter >= maxSteps || currentTrack.zeroStepCounter > kStepsStuckKill) {
+    if (soaTrack->fStepCounter[slot] >= maxSteps || soaTrack->fZeroStepCounter[slot] > kStepsStuckKill) {
       if (printErrors)
         printf("Killing e-/+ event %d track %ld E=%f lvol=%d after %d steps with zeroStepCounter %u\n",
                soaTrack->fEventId[slot], soaTrack->fTrackId[slot], soaTrack->fEkin[slot], lvolID,
-               currentTrack.stepCounter, currentTrack.zeroStepCounter);
+               soaTrack->fStepCounter[slot], soaTrack->fZeroStepCounter[slot]);
       continue;
     }
 
@@ -145,7 +148,7 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
         InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]] != 0) {
       printf("Thread %d Finishing e-/e+ of the %d last particles of event %d on CPU E=%f lvol=%d after %d steps.\n",
              soaTrack->fThreadId[slot], InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]],
-             soaTrack->fEventId[slot], soaTrack->fEkin[slot], lvolID, currentTrack.stepCounter);
+             soaTrack->fEventId[slot], soaTrack->fEkin[slot], lvolID, soaTrack->fStepCounter[slot]);
       survive(LeakStatus::FinishEventOnCPU);
       continue;
     }
@@ -308,13 +311,13 @@ __global__ void ElectronPropagation(Track *electrons, SoATrack *soaTrack, G4HepE
     }
 
     if (currentTrack.geometryStepLength < kPushStuck && currentTrack.geometryStepLength < theTrack->GetGStepLength()) {
-      currentTrack.zeroStepCounter++;
-      if (currentTrack.zeroStepCounter > kStepsStuckPush) soaTrack->fPos[slot] += kPushStuck * soaTrack->fDir[slot];
+      soaTrack->fZeroStepCounter[slot]++;
+      if (soaTrack->fZeroStepCounter[slot] > kStepsStuckPush) soaTrack->fPos[slot] += kPushStuck * soaTrack->fDir[slot];
     } else
-      currentTrack.zeroStepCounter = 0;
+      soaTrack->fZeroStepCounter[slot] = 0;
 
     // punish miniscule steps by increasing the looperCounter by 10
-    if (currentTrack.geometryStepLength < 100 * vecgeom::kTolerance) currentTrack.looperCounter += 10;
+    if (currentTrack.geometryStepLength < 100 * vecgeom::kTolerance) soaTrack->fLooperCounter[slot] += 10;
 
     // Set boundary state in navState so the next step and secondaries get the
     // correct information (navState = nextState only if relocated
@@ -503,13 +506,13 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
         // Did not yet reach the interaction point due to error in the magnetic
         // field propagation. Try again next time.
 
-        if (++currentTrack.looperCounter > 500) {
+        if (++soaTrack->fLooperCounter[slot] > 500) {
           // Kill loopers that are not advancing in free space
           if (printErrors)
             printf("Killing looper due to lack of advance: E=%E event=%d loop=%d energyDeposit=%E geoStepLength=%E "
                    "physicsStepLength=%E "
                    "safety=%E\n",
-                   soaTrack->fEkin[slot], soaTrack->fEventId[slot], currentTrack.looperCounter, energyDeposit,
+                   soaTrack->fEkin[slot], soaTrack->fEventId[slot], soaTrack->fLooperCounter[slot], energyDeposit,
                    currentTrack.geometryStepLength, theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
           continue;
         }
@@ -546,7 +549,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
     // Now push the particles that reached their interaction into the per-interaction queues
     if (reached_interaction) {
       // reset Looper counter if limited by discrete interaction or MSC
-      currentTrack.looperCounter = 0;
+      soaTrack->fLooperCounter[slot] = 0;
 
       if (!currentTrack.stopped) {
         // Reset number of interaction left for the winner discrete process.
@@ -589,7 +592,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
                                  soaTrack->fLocalTime[slot],  // local time
                                  soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                  isLastStep,                                          // whether this was the last step
-                                 currentTrack.stepCounter);                           // stepcounter
+                                 soaTrack->fStepCounter[slot]);                       // stepcounter
     }
   }
 }
@@ -675,13 +678,13 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
     // - Set cross boundary flag in order to set the correct navstate after scoring
     // - Kill particles that left the world
 
-    if (++currentTrack.looperCounter > 500) {
+    if (++soaTrack->fLooperCounter[slot] > 500) {
       // Kill loopers that are scraping a boundary
       if (printErrors)
         printf("Killing looper scraping at a boundary: E=%E event=%d loop=%d energyDeposit=%E geoStepLength=%E "
                "physicsStepLength=%E "
                "safety=%E\n",
-               soaTrack->fEkin[slot], soaTrack->fEventId[slot], currentTrack.looperCounter, energyDeposit,
+               soaTrack->fEkin[slot], soaTrack->fEventId[slot], soaTrack->fLooperCounter[slot], energyDeposit,
                currentTrack.geometryStepLength, theTrack->GetGStepLength(), soaTrack->fSafety[slot]);
       continue;
     }
@@ -727,7 +730,7 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
                                soaTrack->fLocalTime[slot],            // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
-                               currentTrack.stepCounter);                           // stepcounter
+                               soaTrack->fStepCounter[slot]);                       // stepcounter
 
     if (cross_boundary) {
       // Move to the next boundary now that the Step is recorded
@@ -810,9 +813,9 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
             secondaries.gammas.fSoANextTracks->fGlobalTime[gamma1.currentSlot], // global time
             0.,                                                                 // local time
             secondaries.gammas.fSoANextTracks->fEventId[gamma1.currentSlot],
-            secondaries.gammas.fSoANextTracks->fThreadId[gamma1.currentSlot], // eventID and threadID
-            false,                                                            // whether this was the last step
-            gamma1.stepCounter);                                              // whether this was the first step
+            secondaries.gammas.fSoANextTracks->fThreadId[gamma1.currentSlot],     // eventID and threadID
+            false,                                                                // whether this was the last step
+            secondaries.gammas.fSoANextTracks->fStepCounter[gamma1.currentSlot]); // whether this was the first step
         adept_scoring::RecordHit(
             userScoring, secondaries.gammas.fSoANextTracks->fTrackId[gamma2.currentSlot],
             secondaries.gammas.fSoANextTracks->fParentId[gamma2.currentSlot],
@@ -832,9 +835,9 @@ __device__ __forceinline__ void PerformStoppedAnnihilation(const int slot, Track
             secondaries.gammas.fSoANextTracks->fGlobalTime[gamma2.currentSlot], // global time
             0.,                                                                 // local time
             secondaries.gammas.fSoANextTracks->fEventId[gamma2.currentSlot],
-            secondaries.gammas.fSoANextTracks->fThreadId[gamma2.currentSlot], // eventID and threadID
-            false,                                                            // whether this was the last step
-            gamma2.stepCounter);                                              // whether this was the first step
+            secondaries.gammas.fSoANextTracks->fThreadId[gamma2.currentSlot],     // eventID and threadID
+            false,                                                                // whether this was the last step
+            secondaries.gammas.fSoANextTracks->fStepCounter[gamma2.currentSlot]); // whether this was the first step
       }
     }
   }
@@ -954,7 +957,8 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
             secondaries.electrons.fSoANextTracks->fEventId[secondary.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[secondary.currentSlot], // eventID and threadID
             false,                                                                  // whether this was the last step
-            secondary.stepCounter);                                                 // whether this was the first step
+            secondaries.electrons.fSoANextTracks
+                ->fStepCounter[secondary.currentSlot]); // whether this was the first step
       }
     }
 
@@ -995,7 +999,7 @@ __global__ void ElectronIonization(Track *electrons, SoATrack *soaTrack, G4HepEm
                                soaTrack->fLocalTime[slot],            // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
-                               currentTrack.stepCounter);                           // stepcounter
+                               soaTrack->fStepCounter[slot]);                       // stepcounter
   }
 }
 
@@ -1104,9 +1108,9 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
             secondaries.gammas.fSoANextTracks->fGlobalTime[gamma.currentSlot], // global time
             0.,                                                                // local time
             secondaries.gammas.fSoANextTracks->fEventId[gamma.currentSlot],
-            secondaries.gammas.fSoANextTracks->fThreadId[gamma.currentSlot], // eventID and threadID
-            false,                                                           // whether this was the last step
-            gamma.stepCounter);                                              // whether this was the first step
+            secondaries.gammas.fSoANextTracks->fThreadId[gamma.currentSlot],     // eventID and threadID
+            false,                                                               // whether this was the last step
+            secondaries.gammas.fSoANextTracks->fStepCounter[gamma.currentSlot]); // whether this was the first step
       }
     }
 
@@ -1147,7 +1151,7 @@ __global__ void ElectronBremsstrahlung(Track *electrons, SoATrack *soaTrack, G4H
                                soaTrack->fLocalTime[slot],            // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
-                               currentTrack.stepCounter);                           // stepcounter
+                               soaTrack->fStepCounter[slot]);                       // stepcounter
   }
 }
 
@@ -1235,7 +1239,7 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
             secondaries.gammas.fSoANextTracks->fEventId[gamma1.currentSlot],
             secondaries.gammas.fSoANextTracks->fThreadId[gamma1.currentSlot], // eventID and threadID
             false,                                                            // whether this was the last step
-            gamma1.stepCounter);
+            secondaries.gammas.fSoANextTracks->fStepCounter[gamma1.currentSlot]);
       }
     }
     if (ApplyCuts && (theGamma2Ekin < theGammaCut)) {
@@ -1270,7 +1274,7 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
             secondaries.gammas.fSoANextTracks->fEventId[gamma2.currentSlot],
             secondaries.gammas.fSoANextTracks->fThreadId[gamma2.currentSlot], // eventID and threadID
             false,                                                            // whether this was the last step
-            gamma2.stepCounter);
+            secondaries.gammas.fSoANextTracks->fStepCounter[gamma2.currentSlot]);
       }
     }
 
@@ -1299,7 +1303,7 @@ __global__ void PositronAnnihilation(Track *electrons, SoATrack *soaTrack, G4Hep
                                soaTrack->fLocalTime[slot],  // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
-                               currentTrack.stepCounter);                           // stepcounter
+                               soaTrack->fStepCounter[slot]);                       // stepcounter
   }
 }
 
@@ -1364,7 +1368,7 @@ __global__ void PositronStoppedAnnihilation(Track *electrons, SoATrack *soaTrack
                                soaTrack->fLocalTime[slot],  // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // eventID and threadID
                                isLastStep,                                          // whether this was the last step
-                               currentTrack.stepCounter);                           // stepcounter
+                               soaTrack->fStepCounter[slot]);                       // stepcounter
   }
 }
 

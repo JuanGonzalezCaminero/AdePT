@@ -249,6 +249,12 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fEventId[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fThreadId[slot] =
         tracksAndSlots.soaInjected[particleType]->fThreadId[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fStepCounter[slot] =
+        tracksAndSlots.soaInjected[particleType]->fStepCounter[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fLooperCounter[slot] =
+        tracksAndSlots.soaInjected[particleType]->fLooperCounter[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fZeroStepCounter[slot] =
+        tracksAndSlots.soaInjected[particleType]->fZeroStepCounter[injectionSlot];
 
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
@@ -338,7 +344,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].leakStatus     = track->leakStatus;
       fromDevice[idx].parentId       = soaLeaks->fParentId[trackSlot];
       fromDevice[idx].trackId        = soaLeaks->fTrackId[trackSlot];
-      fromDevice[idx].stepCounter    = track->stepCounter;
+      fromDevice[idx].stepCounter    = soaLeaks->fStepCounter[trackSlot];
 
       leakedTracks->fSlotManager->MarkSlotForFreeing(trackSlot);
     }
@@ -676,6 +682,9 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fTrackId, nSlot);
   gpuMalloc(hostSoA.fEventId, nSlot);
   gpuMalloc(hostSoA.fThreadId, nSlot);
+  gpuMalloc(hostSoA.fStepCounter, nSlot);
+  gpuMalloc(hostSoA.fLooperCounter, nSlot);
+  gpuMalloc(hostSoA.fZeroStepCounter, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }

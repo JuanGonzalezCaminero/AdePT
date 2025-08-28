@@ -53,14 +53,14 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
     currentTrack.preStepDir  = soaTrack->fDir[slot];
     // the MCC vector is indexed by the logical volume id
 
-    currentTrack.stepCounter++;
+    soaTrack->fStepCounter[slot]++;
     bool printErrors = false;
-    if (currentTrack.stepCounter >= maxSteps || currentTrack.zeroStepCounter > kStepsStuckKill) {
+    if (soaTrack->fStepCounter[slot] >= maxSteps || soaTrack->fZeroStepCounter[slot] > kStepsStuckKill) {
       if (printErrors)
         printf("Killing gamma event %d track %lu E=%f lvol=%d after %d steps with zeroStepCounter %u. This indicates a "
                "stuck particle!\n",
                soaTrack->fEventId[slot], soaTrack->fTrackId[slot], soaTrack->fEkin[slot], lvolID,
-               currentTrack.stepCounter, currentTrack.zeroStepCounter);
+               soaTrack->fStepCounter[slot], soaTrack->fZeroStepCounter[slot]);
       continue;
     }
 
@@ -90,7 +90,7 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
         InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]] != 0) {
       printf("Thread %d Finishing gamma of the %d last particles of event %d on CPU E=%f lvol=%d after %d steps.\n",
              soaTrack->fThreadId[slot], InFlightStats->perEventInFlightPrevious[soaTrack->fThreadId[slot]],
-             soaTrack->fEventId[slot], soaTrack->fEkin[slot], lvolID, currentTrack.stepCounter);
+             soaTrack->fEventId[slot], soaTrack->fEkin[slot], lvolID, soaTrack->fStepCounter[slot]);
       survive(LeakStatus::FinishEventOnCPU);
       continue;
     }
@@ -152,10 +152,10 @@ __global__ void GammaPropagation(Track *gammas, SoATrack *soaTrack, G4HepEmGamma
     //         nextState.IsOnBoundary(), pos[0], pos[1], pos[2], dir[0], dir[1], dir[2]);
 
     if (currentTrack.geometryStepLength < kPushStuck && currentTrack.geometryStepLength < theTrack->GetGStepLength()) {
-      currentTrack.zeroStepCounter++;
-      if (currentTrack.zeroStepCounter > kStepsStuckPush) soaTrack->fPos[slot] += kPushStuck * soaTrack->fDir[slot];
+      soaTrack->fZeroStepCounter[slot]++;
+      if (soaTrack->fZeroStepCounter[slot] > kStepsStuckPush) soaTrack->fPos[slot] += kPushStuck * soaTrack->fDir[slot];
     } else
-      currentTrack.zeroStepCounter = 0;
+      soaTrack->fZeroStepCounter[slot] = 0;
 
     soaTrack->fPos[slot] += currentTrack.geometryStepLength * soaTrack->fDir[slot];
 
@@ -339,8 +339,8 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  soaTrack->fGlobalTime[slot],     // global time
                                  soaTrack->fLocalTime[slot],      // local time
                                  soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
-                                 false,                     // whether this is the last step of the track
-                                 currentTrack.stepCounter); // stepcounter
+                                 false,                         // whether this is the last step of the track
+                                 soaTrack->fStepCounter[slot]); // stepcounter
 
       // Move to the next boundary.
       soaTrack->fNavState[slot] = currentTrack.nextState;
@@ -381,8 +381,8 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  soaTrack->fGlobalTime[slot],     // global time
                                  soaTrack->fLocalTime[slot],      // local time
                                  soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
-                                 true,                      // whether this is the last step of the track
-                                 currentTrack.stepCounter); // stepcounter
+                                 true,                          // whether this is the last step of the track
+                                 soaTrack->fStepCounter[slot]); // stepcounter
     }
     continue;
   }
@@ -489,7 +489,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
-            electron.stepCounter);                                                 // whether this was the first step
+            secondaries.electrons.fSoANextTracks
+                ->fStepCounter[electron.currentSlot]); // whether this was the first step
       }
     }
 
@@ -526,7 +527,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             secondaries.positrons.fSoANextTracks->fEventId[positron.currentSlot],
             secondaries.positrons.fSoANextTracks->fThreadId[positron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
-            positron.stepCounter);                                                 // whether this was the first step
+            secondaries.positrons.fSoANextTracks
+                ->fStepCounter[positron.currentSlot]); // whether this was the first step
       }
     }
 
@@ -556,8 +558,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
                                soaTrack->fGlobalTime[slot],     // global time
                                soaTrack->fLocalTime[slot],      // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
-                               isLastStep,                // whether this is the last step of the track
-                               currentTrack.stepCounter); // stepcounter
+                               isLastStep,                    // whether this is the last step of the track
+                               soaTrack->fStepCounter[slot]); // stepcounter
     }
   }
 }
@@ -656,7 +658,8 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
-            electron.stepCounter);                                                 // whether this was the first step
+            secondaries.electrons.fSoANextTracks
+                ->fStepCounter[electron.currentSlot]); // whether this was the first step
       }
 
     } else {
@@ -700,7 +703,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
                                soaTrack->fLocalTime[slot],      // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep, // whether this is the last step of the track
-                               currentTrack.stepCounter);
+                               soaTrack->fStepCounter[slot]);
     }
   }
 }
@@ -798,7 +801,8 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
-            electron.stepCounter);                                                 // whether this was the first step
+            secondaries.electrons.fSoANextTracks
+                ->fStepCounter[electron.currentSlot]); // whether this was the first step
       }
 
     } else {
@@ -832,7 +836,7 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
                                soaTrack->fLocalTime[slot],      // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep, // whether this is the last step of the track
-                               currentTrack.stepCounter);
+                               soaTrack->fStepCounter[slot]);
     }
   }
 }

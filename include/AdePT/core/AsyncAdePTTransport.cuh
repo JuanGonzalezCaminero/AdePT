@@ -200,9 +200,9 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // the same random number state, causing collisions in the track IDs
     auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
     Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.weight, seed, trackInfo.parentId,
-        trackInfo.trackId, trackInfo.eventId, trackInfo.threadId, trackInfo.globalTime,
-        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.stepCounter);
+        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.globalTime,
+        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.weight, seed,
+        trackInfo.parentId, trackInfo.trackId, trackInfo.eventId, trackInfo.threadId, trackInfo.stepCounter);
     generator->fSoAInjected->fNavState[slot].Clear();
     generator->fSoAInjected->fNavState[slot]       = trackinfo[i].navState;
     generator->fSoAInjected->fOriginNavState[slot] = trackinfo[i].originNavState;
@@ -227,6 +227,12 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fPos[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fDir[slot] =
         tracksAndSlots.soaInjected[particleType]->fDir[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fGlobalTime[slot] =
+        tracksAndSlots.soaInjected[particleType]->fGlobalTime[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fLocalTime[slot] =
+        tracksAndSlots.soaInjected[particleType]->fLocalTime[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fProperTime[slot] =
+        tracksAndSlots.soaInjected[particleType]->fProperTime[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fNavState[slot] =
         tracksAndSlots.soaInjected[particleType]->fNavState[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fOriginNavState[slot] =
@@ -320,9 +326,9 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].direction[2] = soaLeaks->fDir[trackSlot][2];
       fromDevice[idx].eKin         = soaLeaks->fEkin[trackSlot];
       // fromDevice[idx].eKin           = track->eKin;
-      fromDevice[idx].globalTime     = track->globalTime;
-      fromDevice[idx].localTime      = track->localTime;
-      fromDevice[idx].properTime     = track->properTime;
+      fromDevice[idx].globalTime     = soaLeaks->fGlobalTime[trackSlot];
+      fromDevice[idx].localTime      = soaLeaks->fLocalTime[trackSlot];
+      fromDevice[idx].properTime     = soaLeaks->fProperTime[trackSlot];
       fromDevice[idx].weight         = soaLeaks->fWeight[trackSlot];
       fromDevice[idx].pdg            = pdg;
       fromDevice[idx].eventId        = soaLeaks->fEventId[trackSlot];
@@ -661,6 +667,9 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fSafetyPos, nSlot);
   gpuMalloc(hostSoA.fPos, nSlot);
   gpuMalloc(hostSoA.fDir, nSlot);
+  gpuMalloc(hostSoA.fGlobalTime, nSlot);
+  gpuMalloc(hostSoA.fLocalTime, nSlot);
+  gpuMalloc(hostSoA.fProperTime, nSlot);
   gpuMalloc(hostSoA.fNavState, nSlot);
   gpuMalloc(hostSoA.fOriginNavState, nSlot);
   gpuMalloc(hostSoA.fParentId, nSlot);

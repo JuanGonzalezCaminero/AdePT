@@ -170,8 +170,8 @@ __global__ void GammaPropagation(Track *gammas, SoATrack *soaTrack, G4HepEmGamma
 
     // Update the flight times of the particle
     double deltaTime = theTrack->GetGStepLength() / copcore::units::kCLight;
-    currentTrack.globalTime += deltaTime;
-    currentTrack.localTime += deltaTime;
+    soaTrack->fGlobalTime[slot] += deltaTime;
+    soaTrack->fLocalTime[slot] += deltaTime;
   }
 }
 
@@ -336,8 +336,8 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  soaTrack->fPos[slot],            // Post-step point position
                                  soaTrack->fDir[slot],            // Post-step point momentum direction
                                  soaTrack->fEkin[slot],           // Post-step point kinetic energy
-                                 currentTrack.globalTime,         // global time
-                                 currentTrack.localTime,          // local time
+                                 soaTrack->fGlobalTime[slot],     // global time
+                                 soaTrack->fLocalTime[slot],      // local time
                                  soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                  false,                     // whether this is the last step of the track
                                  currentTrack.stepCounter); // stepcounter
@@ -378,8 +378,8 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
                                  soaTrack->fPos[slot],            // Post-step point position
                                  soaTrack->fDir[slot],            // Post-step point momentum direction
                                  soaTrack->fEkin[slot],           // Post-step point kinetic energy
-                                 currentTrack.globalTime,         // global time
-                                 currentTrack.localTime,          // local time
+                                 soaTrack->fGlobalTime[slot],     // global time
+                                 soaTrack->fLocalTime[slot],      // local time
                                  soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                  true,                      // whether this is the last step of the track
                                  currentTrack.stepCounter); // stepcounter
@@ -463,8 +463,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     } else {
       Track &electron = secondaries.electrons.NextTrack(
           elKinEnergy, soaTrack->fPos[slot],
-          vecgeom::Vector3D<Precision>{dirSecondaryEl[0], dirSecondaryEl[1], dirSecondaryEl[2]}, soaTrack, slot, newRNG,
-          soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
+          vecgeom::Vector3D<Precision>{dirSecondaryEl[0], dirSecondaryEl[1], dirSecondaryEl[2]},
+          soaTrack->fGlobalTime[slot], soaTrack, slot, newRNG, soaTrack->fNavState[slot], currentTrack);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -484,8 +484,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Post-step point position
             secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Post-step point momentum direction
             elKinEnergy,                                                           // Post-step point kinetic energy
-            electron.globalTime,                                                   // global time
-            0.,                                                                    // local time
+            secondaries.electrons.fSoANextTracks->fGlobalTime[electron.currentSlot], // global time
+            0.,                                                                      // local time
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -499,8 +499,9 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
     } else {
       Track &positron = secondaries.positrons.NextTrack(
           posKinEnergy, soaTrack->fPos[slot],
-          vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]}, soaTrack, slot,
-          soaTrack->fRngState[slot], soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
+          vecgeom::Vector3D<Precision>{dirSecondaryPos[0], dirSecondaryPos[1], dirSecondaryPos[2]},
+          soaTrack->fGlobalTime[slot], soaTrack, slot, soaTrack->fRngState[slot], soaTrack->fNavState[slot],
+          currentTrack);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -520,8 +521,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
             secondaries.positrons.fSoANextTracks->fPos[positron.currentSlot],      // Post-step point position
             secondaries.positrons.fSoANextTracks->fDir[positron.currentSlot],      // Post-step point momentum direction
             posKinEnergy,                                                          // Post-step point kinetic energy
-            positron.globalTime,                                                   // global time
-            0.,                                                                    // local time
+            secondaries.positrons.fSoANextTracks->fGlobalTime[positron.currentSlot], // global time
+            0.,                                                                      // local time
             secondaries.positrons.fSoANextTracks->fEventId[positron.currentSlot],
             secondaries.positrons.fSoANextTracks->fThreadId[positron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -552,8 +553,8 @@ __global__ void GammaConversion(Track *gammas, SoATrack *soaTrack, G4HepEmGammaT
                                soaTrack->fPos[slot],            // Post-step point position
                                soaTrack->fDir[slot],            // Post-step point momentum direction
                                newEnergyGamma,                  // Post-step point kinetic energy
-                               currentTrack.globalTime,         // global time
-                               currentTrack.localTime,          // local time
+                               soaTrack->fGlobalTime[slot],     // global time
+                               soaTrack->fLocalTime[slot],      // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep,                // whether this is the last step of the track
                                currentTrack.stepCounter); // stepcounter
@@ -629,7 +630,7 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
       // Create a secondary electron and sample/compute directions.
       Track &electron = secondaries.electrons.NextTrack(
           energyEl, soaTrack->fPos[slot], soaTrack->fEkin[slot] * soaTrack->fDir[slot] - newEnergyGamma * newDirGamma,
-          soaTrack, slot, newRNG, soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
+          soaTrack->fGlobalTime[slot], soaTrack, slot, newRNG, soaTrack->fNavState[slot], currentTrack);
       secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot].Normalize();
 
       // if tracking or stepping action is called, return initial step
@@ -650,8 +651,8 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
             secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Post-step point position
             secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Post-step point momentum direction
             energyEl,                                                              // Post-step point kinetic energy
-            electron.globalTime,                                                   // global time
-            0.,                                                                    // local time
+            secondaries.electrons.fSoANextTracks->fGlobalTime[electron.currentSlot], // global time
+            0.,                                                                      // local time
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -695,8 +696,8 @@ __global__ void GammaCompton(Track *gammas, SoATrack *soaTrack, G4HepEmGammaTrac
                                soaTrack->fPos[slot],            // Post-step point position
                                soaTrack->fDir[slot],            // Post-step point momentum direction
                                newEnergyGamma,                  // Post-step point kinetic energy
-                               currentTrack.globalTime,         // global time
-                               currentTrack.localTime,          // local time
+                               soaTrack->fGlobalTime[slot],     // global time
+                               soaTrack->fLocalTime[slot],      // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep, // whether this is the last step of the track
                                currentTrack.stepCounter);
@@ -771,8 +772,8 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
       // Create a secondary electron and sample directions.
       Track &electron = secondaries.electrons.NextTrack(
           photoElecE, soaTrack->fPos[slot],
-          vecgeom::Vector3D<Precision>{dirPhotoElec[0], dirPhotoElec[1], dirPhotoElec[2]}, soaTrack, slot, newRNG,
-          soaTrack->fNavState[slot], currentTrack, currentTrack.globalTime);
+          vecgeom::Vector3D<Precision>{dirPhotoElec[0], dirPhotoElec[1], dirPhotoElec[2]}, soaTrack->fGlobalTime[slot],
+          soaTrack, slot, newRNG, soaTrack->fNavState[slot], currentTrack);
 
       // if tracking or stepping action is called, return initial step
       if (returnLastStep) {
@@ -792,8 +793,8 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
             secondaries.electrons.fSoANextTracks->fPos[electron.currentSlot],      // Post-step point position
             secondaries.electrons.fSoANextTracks->fDir[electron.currentSlot],      // Post-step point momentum direction
             photoElecE,                                                            // Post-step point kinetic energy
-            electron.globalTime,                                                   // global time
-            0.,                                                                    // local time
+            secondaries.electrons.fSoANextTracks->fGlobalTime[electron.currentSlot], // global time
+            0.,                                                                      // local time
             secondaries.electrons.fSoANextTracks->fEventId[electron.currentSlot],
             secondaries.electrons.fSoANextTracks->fThreadId[electron.currentSlot], // eventID and threadID
             false,                                                                 // whether this was the last step
@@ -827,8 +828,8 @@ __global__ void GammaPhotoelectric(Track *gammas, SoATrack *soaTrack, G4HepEmGam
                                soaTrack->fPos[slot],            // Post-step point position
                                soaTrack->fDir[slot],            // Post-step point momentum direction
                                newEnergyGamma,                  // Post-step point kinetic energy
-                               currentTrack.globalTime,         // global time
-                               currentTrack.localTime,          // local time
+                               soaTrack->fGlobalTime[slot],     // global time
+                               soaTrack->fLocalTime[slot],      // local time
                                soaTrack->fEventId[slot], soaTrack->fThreadId[slot], // event and thread ID
                                isLastStep, // whether this is the last step of the track
                                currentTrack.stepCounter);

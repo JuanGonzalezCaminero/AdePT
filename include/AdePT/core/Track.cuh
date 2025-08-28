@@ -23,6 +23,9 @@ struct SoATrack {
   vecgeom::Vector3D<float> *fSafetyPos; ///< last position where the safety was computed
   vecgeom::Vector3D<Precision> *fPos;
   vecgeom::Vector3D<Precision> *fDir;
+  double *fGlobalTime;
+  float *fLocalTime;
+  float *fProperTime;
   vecgeom::NavigationState *fNavState;
   vecgeom::NavigationState *fOriginNavState;
   uint64_t *fParentId;
@@ -30,11 +33,11 @@ struct SoATrack {
   unsigned int *fEventId;
   short *fThreadId;
 
-  // In order to use the ParticleGenerator, all extra arguments are absorved and discarded
+  // Initialize a GPU track coming from CPU
   template <typename... Args>
-  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], float weight,
-                            uint64_t rngSeed, uint64_t parentId, uint64_t trackId, unsigned int eventId, short threadId,
-                            Args...)
+  __device__ void InitTrack(int trackSlot, double eKin, double const pos[3], double const dir[3], double globalTime,
+                            float localTime, float properTime, float weight, uint64_t rngSeed, uint64_t parentId,
+                            uint64_t trackId, unsigned int eventId, short threadId, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -42,7 +45,10 @@ struct SoATrack {
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot].Set(pos[0], pos[1], pos[2]);
     fDir[trackSlot].Set(dir[0], dir[1], dir[2]);
-    fWeight[trackSlot] = weight;
+    fGlobalTime[trackSlot] = globalTime;
+    fLocalTime[trackSlot]  = localTime;
+    fProperTime[trackSlot] = properTime;
+    fWeight[trackSlot]     = weight;
     fRngState[trackSlot].SetSeed(rngSeed);
     fParentId[trackSlot] = parentId;
     fTrackId[trackSlot]  = trackId;
@@ -50,10 +56,12 @@ struct SoATrack {
     fThreadId[trackSlot] = threadId;
   }
 
+  // Construct a track from a parent track
   template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
-                            const vecgeom::Vector3D<Precision> &dir, SoATrack *parentSoATrack, int parentTrackSlot,
-                            RanluxppDouble const &rngState, const vecgeom::NavigationState &newNavState, Args...)
+                            const vecgeom::Vector3D<Precision> &dir, const double globalTime, SoATrack *parentSoATrack,
+                            int parentTrackSlot, RanluxppDouble const &rngState,
+                            const vecgeom::NavigationState &newNavState, Args...)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -61,6 +69,9 @@ struct SoATrack {
     fSafetyPos[trackSlot].Set(0.f, 0.f, 0.f);
     fPos[trackSlot]            = pos;
     fDir[trackSlot]            = dir;
+    fGlobalTime[trackSlot]     = globalTime;
+    fLocalTime[trackSlot]      = 0;
+    fProperTime[trackSlot]     = 0;
     fNavState[trackSlot]       = newNavState;
     fOriginNavState[trackSlot] = newNavState;
     fWeight[trackSlot]         = parentSoATrack->fWeight[parentTrackSlot];
@@ -106,7 +117,7 @@ struct Track {
 
   // RanluxppDouble rngState;
   // double eKin{0.};
-  double globalTime{0.};
+  // double globalTime{0.};
 
   // float weight{0.};
   float numIALeft[4]{-1.f, -1.f, -1.f, -1.f};
@@ -115,8 +126,8 @@ struct Track {
   float dynamicRangeFactor{0.04};
   float tlimitMin{1.0E-7};
 
-  float localTime{0.f};
-  float properTime{0.f};
+  // float localTime{0.f};
+  // float properTime{0.f};
 
   // vecgeom::Vector3D<Precision> pos; ///< track position
   // vecgeom::Vector3D<Precision> dir; ///< track direction
@@ -163,11 +174,10 @@ struct Track {
 
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
-  __device__ Track(double eKin, double const position[3], double const direction[3], float weight, uint64_t rngSeed,
-                   uint64_t parentId, uint64_t trackId, unsigned int eventId, short threadId, double globalTime,
-                   float localTime, float properTime, unsigned short stepCounter)
-      : globalTime{globalTime}, localTime{localTime}, properTime{properTime}, stepCounter{stepCounter},
-        looperCounter{0}, zeroStepCounter{0}
+  __device__ Track(double eKin, double const position[3], double const direction[3], double globalTime, float localTime,
+                   float properTime, float weight, uint64_t rngSeed, uint64_t parentId, uint64_t trackId,
+                   unsigned int eventId, short threadId, unsigned short stepCounter)
+      : stepCounter{stepCounter}, looperCounter{0}, zeroStepCounter{0}
   {
     // rngState.SetSeed(rngSeed);
     // pos        = {position[0], position[1], position[2]};
@@ -178,11 +188,10 @@ struct Track {
   /// Construct a secondary from a parent track.
   /// NB: The caller is responsible to branch a new RNG state.
   __device__ Track(double eKin, const vecgeom::Vector3D<Precision> &parentPos,
-                   const vecgeom::Vector3D<Precision> &newDirection, SoATrack *parentSoATrack, int parentTrackSlot,
-                   RanluxppDouble const &rng_state, const vecgeom::NavigationState &newNavState,
-                   const Track &parentTrack, const double globalTime)
-      : globalTime{globalTime}, /*navState{newNavState}, originNavState{newNavState},*/ stepCounter{0},
-        looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
+                   const vecgeom::Vector3D<Precision> &newDirection, const double globalTime, SoATrack *parentSoATrack,
+                   int parentTrackSlot, RanluxppDouble const &rng_state, const vecgeom::NavigationState &newNavState,
+                   const Track &parentTrack)
+      : stepCounter{0}, looperCounter{0}, zeroStepCounter{0}, leakStatus{LeakStatus::NoLeak}
   {
   }
 
@@ -231,9 +240,9 @@ struct Track {
     // Caller is responsible to set the weight of the track
 
     // The global time is inherited from the parent
-    this->globalTime = gTime;
-    this->localTime  = 0.;
-    this->properTime = 0.;
+    // this->globalTime = gTime;
+    // this->localTime  = 0.;
+    // this->properTime = 0.;
 
     this->stepCounter     = 0;
     this->looperCounter   = 0;
@@ -255,9 +264,9 @@ struct Track {
     // tdata.direction[2] = dir[2];
     // TODO: Fix for sync mode
     // tdata.eKin           = eKin;
-    tdata.globalTime = globalTime;
-    tdata.localTime  = localTime;
-    tdata.properTime = properTime;
+    // tdata.globalTime = globalTime;
+    // tdata.localTime  = localTime;
+    // tdata.properTime = properTime;
     // tdata.navState       = navState;
     // tdata.originNavState = originNavState;
     // tdata.weight         = weight;

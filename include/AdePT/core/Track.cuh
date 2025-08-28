@@ -26,6 +26,13 @@ struct SoATrack {
   double *fGlobalTime;
   float *fLocalTime;
   float *fProperTime;
+  struct {
+    float values[4];
+  } *fNumIALeft;
+  float *fInitialRange;
+  float *fDynamicRangeFactor;
+  float *fTlimitMin;
+  LeakStatus *fLeakStatus;
   vecgeom::NavigationState *fNavState;
   vecgeom::NavigationState *fOriginNavState;
   uint64_t *fParentId;
@@ -59,6 +66,12 @@ struct SoATrack {
     fStepCounter[trackSlot]     = stepCounter;
     fLooperCounter[trackSlot]   = 0;
     fZeroStepCounter[trackSlot] = 0;
+    fNumIALeft[trackSlot]       = {-1.f, -1.f, -1.f, -1.f};
+    // default values taken from G4HepEmMSCTrackData.hh
+    fInitialRange[trackSlot]       = 1.0e+21;
+    fDynamicRangeFactor[trackSlot] = 0.04;
+    fTlimitMin[trackSlot]          = 1.0E-7;
+    fLeakStatus[trackSlot]         = LeakStatus::NoLeak;
   }
 
   // Construct a track from a parent track
@@ -88,6 +101,12 @@ struct SoATrack {
     fStepCounter[trackSlot]     = 0;
     fLooperCounter[trackSlot]   = 0;
     fZeroStepCounter[trackSlot] = 0;
+    fNumIALeft[trackSlot]       = {-1.f, -1.f, -1.f, -1.f};
+    // default values taken from G4HepEmMSCTrackData.hh
+    fInitialRange[trackSlot]       = 1.0e+21;
+    fDynamicRangeFactor[trackSlot] = 0.04;
+    fTlimitMin[trackSlot]          = 1.0E-7;
+    fLeakStatus[trackSlot]         = LeakStatus::NoLeak;
   }
 
   /// @brief Get recomputed cached safety ay a given track position
@@ -123,12 +142,6 @@ struct SoATrack {
 struct Track {
   using Precision = vecgeom::Precision;
 
-  float numIALeft[4]{-1.f, -1.f, -1.f, -1.f};
-  // default values taken from G4HepEmMSCTrackData.hh
-  float initialRange{1.0e+21};
-  float dynamicRangeFactor{0.04};
-  float tlimitMin{1.0E-7};
-
 #ifdef USE_SPLIT_KERNELS
   // Variables used to store track info needed for scoring
   vecgeom::NavigationState nextState;
@@ -152,15 +165,12 @@ struct Track {
   bool stopped{false};
 #endif
 
-  LeakStatus leakStatus{LeakStatus::NoLeak};
-
   /// Construct a new track for GPU transport.
   /// NB: The navState remains uninitialised.
   __device__ Track(double eKin, double const position[3], double const direction[3], double globalTime, float localTime,
                    float properTime, float weight, uint64_t rngSeed, uint64_t parentId, uint64_t trackId,
                    unsigned int eventId, short threadId, unsigned short stepCounter)
   {
-    leakStatus = LeakStatus::NoLeak;
   }
 
   /// Construct a secondary from a parent track.
@@ -169,7 +179,6 @@ struct Track {
                    const vecgeom::Vector3D<Precision> &newDirection, const double globalTime, SoATrack *parentSoATrack,
                    int parentTrackSlot, RanluxppDouble const &rng_state, const vecgeom::NavigationState &newNavState,
                    const Track &parentTrack)
-      : leakStatus{LeakStatus::NoLeak}
   {
   }
 
@@ -196,14 +205,14 @@ struct Track {
                                            const vecgeom::NavigationState &parentNavState, double gTime)
   {
     // The caller is responsible to branch a new RNG state and to set the energy.
-    this->numIALeft[0] = -1.0;
-    this->numIALeft[1] = -1.0;
-    this->numIALeft[2] = -1.0;
-    this->numIALeft[3] = -1.0;
+    // this->numIALeft[0] = -1.0;
+    // this->numIALeft[1] = -1.0;
+    // this->numIALeft[2] = -1.0;
+    // this->numIALeft[3] = -1.0;
 
-    this->initialRange       = 1.0e+21;
-    this->dynamicRangeFactor = 0.04;
-    this->tlimitMin          = 1.0E-7;
+    // this->initialRange       = 1.0e+21;
+    // this->dynamicRangeFactor = 0.04;
+    // this->tlimitMin          = 1.0E-7;
 
     // A secondary inherits the position of its parent; the caller is responsible
     // to update the directions.
@@ -226,7 +235,7 @@ struct Track {
     // this->looperCounter   = 0;
     // this->zeroStepCounter = 0;
 
-    this->leakStatus = LeakStatus::NoLeak;
+    // this->leakStatus = LeakStatus::NoLeak;
   }
 
   __host__ __device__ void CopyTo(adeptint::TrackData &tdata, int pdg)
@@ -248,7 +257,7 @@ struct Track {
     // tdata.navState       = navState;
     // tdata.originNavState = originNavState;
     // tdata.weight         = weight;
-    tdata.leakStatus = leakStatus;
+    // tdata.leakStatus = leakStatus;
     // tdata.stepCounter = stepCounter;
   }
 };

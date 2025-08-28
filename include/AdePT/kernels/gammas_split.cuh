@@ -66,7 +66,7 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
-      currentTrack.leakStatus = leakReason;
+      soaTrack->fLeakStatus[slot] = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
@@ -104,11 +104,11 @@ __global__ void GammaHowFar(Track *gammas, SoATrack *soaTrack, Track *leaks, SoA
 
     // Re-sample the `number-of-interaction-left` (if needed, otherwise use stored numIALeft) and put it into the
     // G4HepEmTrack. Use index 0 since numIALeft for gammas is based only on the total macroscopic cross section. The
-    // currentTrack.numIALeft[0] are updated later
-    if (currentTrack.numIALeft[0] <= 0.0) {
+    // soaTrack->fNumIALeft[slot].values[0] are updated later
+    if (soaTrack->fNumIALeft[slot].values[0] <= 0.0) {
       theTrack->SetNumIALeft(-std::log(soaTrack->Uniform(slot)), 0);
     } else {
-      theTrack->SetNumIALeft(currentTrack.numIALeft[0], 0);
+      theTrack->SetNumIALeft(soaTrack->fNumIALeft[slot].values[0], 0);
     }
 
     // Call G4HepEm to compute the physics step limit.
@@ -192,7 +192,7 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
-      currentTrack.leakStatus = leakReason;
+      soaTrack->fLeakStatus[slot] = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
@@ -233,7 +233,7 @@ __global__ void GammaSetupInteractions(Track *gammas, SoATrack *soaTrack, Track 
 
       // Reset number of interaction left for the winner discrete process also in the currentTrack
       // (SampleInteraction() resets it for theTrack), will be resampled in the next iteration.
-      currentTrack.numIALeft[0] = -1.0;
+      soaTrack->fNumIALeft[slot].values[0] = -1.0;
 
       if (theTrack->GetWinnerProcessIndex() < 3) {
         interactionQueues.queues[theTrack->GetWinnerProcessIndex()]->push_back(slot);
@@ -267,7 +267,7 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
 
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
-      currentTrack.leakStatus = leakReason;
+      soaTrack->fLeakStatus[slot] = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
         // Get a slot in the leaks array
         int leakSlot = secondaries.gammas.NextLeakSlot();
@@ -307,8 +307,8 @@ __global__ void GammaRelocation(Track *gammas, SoATrack *soaTrack, Track *leaks,
 
       // Save the `number-of-interaction-left` in our track.
       // Use index 0 since numIALeft stores for gammas only the total macroscopic cross section
-      double numIALeft          = theTrack->GetNumIALeft(0);
-      currentTrack.numIALeft[0] = numIALeft;
+      double numIALeft                     = theTrack->GetNumIALeft(0);
+      soaTrack->fNumIALeft[slot].values[0] = numIALeft;
 
 #ifdef ADEPT_USE_SURF
       AdePTNavigator::RelocateToNextVolume(soaTrack->fPos[slot], soaTrack->fDir[slot], hitsurf_index,

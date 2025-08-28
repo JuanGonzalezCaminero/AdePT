@@ -43,26 +43,31 @@ namespace AsyncAdePT {
 __device__ __forceinline__ void CopyTrack(int slotSrc, int slotDst, Track *src, Track *dst, SoATrack *soaSrc,
                                           SoATrack *soaDst)
 {
-  dst[slotDst]                      = src[slotSrc];
-  soaDst->fEkin[slotDst]            = soaSrc->fEkin[slotSrc];
-  soaDst->fSafety[slotDst]          = soaSrc->fSafety[slotSrc];
-  soaDst->fSafetyPos[slotDst]       = soaSrc->fSafetyPos[slotSrc];
-  soaDst->fPos[slotDst]             = soaSrc->fPos[slotSrc];
-  soaDst->fDir[slotDst]             = soaSrc->fDir[slotSrc];
-  soaDst->fGlobalTime[slotDst]      = soaSrc->fGlobalTime[slotSrc];
-  soaDst->fLocalTime[slotDst]       = soaSrc->fLocalTime[slotSrc];
-  soaDst->fProperTime[slotDst]      = soaSrc->fProperTime[slotSrc];
-  soaDst->fNavState[slotDst]        = soaSrc->fNavState[slotSrc];
-  soaDst->fOriginNavState[slotDst]  = soaSrc->fOriginNavState[slotSrc];
-  soaDst->fWeight[slotDst]          = soaSrc->fWeight[slotSrc];
-  soaDst->fThreadId[slotDst]        = soaSrc->fThreadId[slotSrc];
-  soaDst->fParentId[slotDst]        = soaSrc->fParentId[slotSrc];
-  soaDst->fEventId[slotDst]         = soaSrc->fEventId[slotSrc];
-  soaDst->fRngState[slotDst]        = soaSrc->fRngState[slotSrc];
-  soaDst->fTrackId[slotDst]         = soaSrc->fTrackId[slotSrc];
-  soaDst->fStepCounter[slotDst]     = soaSrc->fStepCounter[slotSrc];
-  soaDst->fLooperCounter[slotDst]   = soaSrc->fLooperCounter[slotSrc];
-  soaDst->fZeroStepCounter[slotDst] = soaSrc->fZeroStepCounter[slotSrc];
+  dst[slotDst]                         = src[slotSrc];
+  soaDst->fEkin[slotDst]               = soaSrc->fEkin[slotSrc];
+  soaDst->fSafety[slotDst]             = soaSrc->fSafety[slotSrc];
+  soaDst->fSafetyPos[slotDst]          = soaSrc->fSafetyPos[slotSrc];
+  soaDst->fPos[slotDst]                = soaSrc->fPos[slotSrc];
+  soaDst->fDir[slotDst]                = soaSrc->fDir[slotSrc];
+  soaDst->fGlobalTime[slotDst]         = soaSrc->fGlobalTime[slotSrc];
+  soaDst->fLocalTime[slotDst]          = soaSrc->fLocalTime[slotSrc];
+  soaDst->fProperTime[slotDst]         = soaSrc->fProperTime[slotSrc];
+  soaDst->fNavState[slotDst]           = soaSrc->fNavState[slotSrc];
+  soaDst->fOriginNavState[slotDst]     = soaSrc->fOriginNavState[slotSrc];
+  soaDst->fWeight[slotDst]             = soaSrc->fWeight[slotSrc];
+  soaDst->fThreadId[slotDst]           = soaSrc->fThreadId[slotSrc];
+  soaDst->fParentId[slotDst]           = soaSrc->fParentId[slotSrc];
+  soaDst->fEventId[slotDst]            = soaSrc->fEventId[slotSrc];
+  soaDst->fRngState[slotDst]           = soaSrc->fRngState[slotSrc];
+  soaDst->fTrackId[slotDst]            = soaSrc->fTrackId[slotSrc];
+  soaDst->fStepCounter[slotDst]        = soaSrc->fStepCounter[slotSrc];
+  soaDst->fLooperCounter[slotDst]      = soaSrc->fLooperCounter[slotSrc];
+  soaDst->fZeroStepCounter[slotDst]    = soaSrc->fZeroStepCounter[slotSrc];
+  soaDst->fNumIALeft[slotDst]          = soaSrc->fNumIALeft[slotSrc];
+  soaDst->fInitialRange[slotDst]       = soaSrc->fInitialRange[slotSrc];
+  soaDst->fDynamicRangeFactor[slotDst] = soaSrc->fDynamicRangeFactor[slotSrc];
+  soaDst->fTlimitMin[slotDst]          = soaSrc->fTlimitMin[slotSrc];
+  soaDst->fLeakStatus[slotDst]         = soaSrc->fLeakStatus[slotSrc];
 }
 
 template <bool IsElectron>
@@ -120,7 +125,7 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
       // NOTE: When adapting the split kernels for async mode this won't
       // work if we want to re-use slots on the fly. Directly copying to
       // a trackdata struct would be better
-      currentTrack.leakStatus = leakReason;
+      soaTrack->fLeakStatus[slot] = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
         // Get a slot in the leaks array
         int leakSlot;
@@ -163,16 +168,16 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
     theTrack->SetCharge(Charge);
     G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
     // the default is 1.0e21 but there are float vs double conversions, so we check for 1e20
-    mscData->fIsFirstStep        = currentTrack.initialRange > 1.0e+20;
-    mscData->fInitialRange       = currentTrack.initialRange;
-    mscData->fDynamicRangeFactor = currentTrack.dynamicRangeFactor;
-    mscData->fTlimitMin          = currentTrack.tlimitMin;
+    mscData->fIsFirstStep        = soaTrack->fInitialRange[slot] > 1.0e+20;
+    mscData->fInitialRange       = soaTrack->fInitialRange[slot];
+    mscData->fDynamicRangeFactor = soaTrack->fDynamicRangeFactor[slot];
+    mscData->fTlimitMin          = soaTrack->fTlimitMin[slot];
 
     G4HepEmRandomEngine rnge(&soaTrack->fRngState[slot]);
 
     // Sample the `number-of-interaction-left` and put it into the track.
     for (int ip = 0; ip < 4; ++ip) {
-      double numIALeft = currentTrack.numIALeft[ip];
+      double numIALeft = soaTrack->fNumIALeft[slot].values[ip];
       if (numIALeft <= 0) {
         numIALeft = -std::log(soaTrack->Uniform(slot));
       }
@@ -230,9 +235,9 @@ __global__ void ElectronHowFar(Track *electrons, SoATrack *soaTrack, Track *leak
     G4HepEmElectronManager::HowFarToMSC(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
 
     // Remember MSC values for the next step(s).
-    currentTrack.initialRange       = mscData->fInitialRange;
-    currentTrack.dynamicRangeFactor = mscData->fDynamicRangeFactor;
-    currentTrack.tlimitMin          = mscData->fTlimitMin;
+    soaTrack->fInitialRange[slot]       = mscData->fInitialRange;
+    soaTrack->fDynamicRangeFactor[slot] = mscData->fDynamicRangeFactor;
+    soaTrack->fTlimitMin[slot]          = mscData->fTlimitMin;
 
     // Particles that were not cut or leaked are added to the queue used by the next kernels
     propagationQueue->push_back(slot);
@@ -434,7 +439,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
       // NOTE: When adapting the split kernels for async mode this won't
       // work if we want to re-use slots on the fly. Directly copying to
       // a trackdata struct would be better
-      currentTrack.leakStatus = leakReason;
+      soaTrack->fLeakStatus[slot] = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
         // Get a slot in the leaks array
         int leakSlot;
@@ -489,8 +494,8 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
 
     // Save the `number-of-interaction-left` in our track.
     for (int ip = 0; ip < 4; ++ip) {
-      double numIALeft           = theTrack->GetNumIALeft(ip);
-      currentTrack.numIALeft[ip] = numIALeft;
+      double numIALeft                      = theTrack->GetNumIALeft(ip);
+      soaTrack->fNumIALeft[slot].values[ip] = numIALeft;
     }
 
     // Set Non-stopped, on-boundary tracks for relocation
@@ -532,7 +537,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
         reached_interaction = false;
         // Reset number of interaction left for the winner discrete process.
         // (Will be resampled in the next iteration.)
-        currentTrack.numIALeft[theTrack->GetWinnerProcessIndex()] = -1.0;
+        soaTrack->fNumIALeft[slot].values[theTrack->GetWinnerProcessIndex()] = -1.0;
       }
     } else {
       // Stopped positrons annihilate, stopped electrons score and die
@@ -554,7 +559,7 @@ __global__ void ElectronSetupInteractions(Track *electrons, SoATrack *soaTrack, 
       if (!currentTrack.stopped) {
         // Reset number of interaction left for the winner discrete process.
         // (Will be resampled in the next iteration.)
-        currentTrack.numIALeft[theTrack->GetWinnerProcessIndex()] = -1.0;
+        soaTrack->fNumIALeft[slot].values[theTrack->GetWinnerProcessIndex()] = -1.0;
         // Enqueue the particles
         if (theTrack->GetWinnerProcessIndex() < 3) {
           interactionQueues.queues[theTrack->GetWinnerProcessIndex()]->push_back(slot);
@@ -621,7 +626,7 @@ __global__ void ElectronRelocation(Track *electrons, SoATrack *soaTrack, Track *
       // NOTE: When adapting the split kernels for async mode this won't
       // work if we want to re-use slots on the fly. Directly copying to
       // a trackdata struct would be better
-      currentTrack.leakStatus = leakReason;
+      soaTrack->fLeakStatus[slot] = leakReason;
       if (leakReason != LeakStatus::NoLeak) {
         // Get a slot in the leaks array
         int leakSlot;

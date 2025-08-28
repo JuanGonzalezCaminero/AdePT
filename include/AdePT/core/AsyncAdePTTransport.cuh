@@ -255,6 +255,16 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
         tracksAndSlots.soaInjected[particleType]->fLooperCounter[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fZeroStepCounter[slot] =
         tracksAndSlots.soaInjected[particleType]->fZeroStepCounter[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fNumIALeft[slot] =
+        tracksAndSlots.soaInjected[particleType]->fNumIALeft[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fInitialRange[slot] =
+        tracksAndSlots.soaInjected[particleType]->fInitialRange[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fDynamicRangeFactor[slot] =
+        tracksAndSlots.soaInjected[particleType]->fDynamicRangeFactor[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fTlimitMin[slot] =
+        tracksAndSlots.soaInjected[particleType]->fTlimitMin[injectionSlot];
+    tracksAndSlots.soaNextTracks[particleType]->fLeakStatus[slot] =
+        tracksAndSlots.soaInjected[particleType]->fLeakStatus[injectionSlot];
 
     // TODO: Is setting the safety necessary here too?
     //  Add the slot to the next active queue
@@ -341,7 +351,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       fromDevice[idx].threadId       = soaLeaks->fThreadId[trackSlot];
       fromDevice[idx].navState       = soaLeaks->fNavState[trackSlot];
       fromDevice[idx].originNavState = soaLeaks->fOriginNavState[trackSlot];
-      fromDevice[idx].leakStatus     = track->leakStatus;
+      fromDevice[idx].leakStatus     = soaLeaks->fLeakStatus[trackSlot];
       fromDevice[idx].parentId       = soaLeaks->fParentId[trackSlot];
       fromDevice[idx].trackId        = soaLeaks->fTrackId[trackSlot];
       fromDevice[idx].stepCounter    = soaLeaks->fStepCounter[trackSlot];
@@ -685,6 +695,11 @@ void InitializeSoA(GPUstate &gpuState, SoATrack &hostSoA, SoATrack &devSoA, int 
   gpuMalloc(hostSoA.fStepCounter, nSlot);
   gpuMalloc(hostSoA.fLooperCounter, nSlot);
   gpuMalloc(hostSoA.fZeroStepCounter, nSlot);
+  gpuMalloc(hostSoA.fNumIALeft, nSlot);
+  gpuMalloc(hostSoA.fInitialRange, nSlot);
+  gpuMalloc(hostSoA.fDynamicRangeFactor, nSlot);
+  gpuMalloc(hostSoA.fTlimitMin, nSlot);
+  gpuMalloc(hostSoA.fLeakStatus, nSlot);
   // Copy the host-side SoATrack struct to the device
   COPCORE_CUDA_CHECK(cudaMemcpy(&devSoA, &hostSoA, sizeof(SoATrack), cudaMemcpyHostToDevice));
 }

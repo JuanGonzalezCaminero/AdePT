@@ -198,11 +198,11 @@ __global__ void InitTracks(AsyncAdePT::TrackDataWithIDs *trackinfo, int ntracks,
     // we need to scramble the initial seed with some more trackinfo to generate a unique seed.
     // otherwise, if a particle returns from the device and is injected again (i.e., via lepton nuclear), it would have
     // the same random number state, causing collisions in the track IDs
-    auto seed    = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
-    Track &track = generator->InitInjectedTrack(
-        slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.globalTime,
-        static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime), trackInfo.weight, seed,
-        trackInfo.parentId, trackInfo.trackId, trackInfo.eventId, trackInfo.threadId, trackInfo.stepCounter);
+    auto seed = GenerateSeedFromTrackInfo(trackInfo, initialSeed);
+    generator->InitInjectedTrack(slot, trackInfo.eKin, trackInfo.position, trackInfo.direction, trackInfo.globalTime,
+                                 static_cast<float>(trackInfo.localTime), static_cast<float>(trackInfo.properTime),
+                                 trackInfo.weight, seed, trackInfo.parentId, trackInfo.trackId, trackInfo.eventId,
+                                 trackInfo.threadId, trackInfo.stepCounter);
     generator->fSoAInjected->fNavState[slot].Clear();
     generator->fSoAInjected->fNavState[slot]       = trackinfo[i].navState;
     generator->fSoAInjected->fOriginNavState[slot] = trackinfo[i].originNavState;
@@ -220,7 +220,6 @@ __global__ void EnqueueTracks(AllParticleQueues allQueues, TracksAndSlots tracks
     // Get a slot in the track buffer
     const auto slot = tracksAndSlots.slotManagers[particleType]->NextSlot();
     // Copy the injected track to the track buffer
-    tracksAndSlots.nextTracks[particleType][slot] = tracksAndSlots.injected[particleType][injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fEkin[slot] =
         tracksAndSlots.soaInjected[particleType]->fEkin[injectionSlot];
     tracksAndSlots.soaNextTracks[particleType]->fPos[slot] =
@@ -324,8 +323,7 @@ __global__ void FillFromDeviceBuffer(AllLeaked all, AsyncAdePT::TrackDataWithIDs
       pdg          = -11;
     }
 
-    const auto trackSlot     = (*leakedTracks->fLeakedQueue)[queueSlot];
-    Track const *const track = leakedTracks->fLeaks + trackSlot;
+    const auto trackSlot = (*leakedTracks->fLeakedQueue)[queueSlot];
 
     if (nAlreadyTransferred <= i && i < nAlreadyTransferred + nToCopy) {
       // Offset i by nAlreadyTransferred to get the index in the fromDevice buffer
@@ -823,31 +821,6 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     COPCORE_CUDA_CHECK(cudaStreamCreate(&particleType.stream));
     COPCORE_CUDA_CHECK(cudaEventCreate(&particleType.event));
 
-    // Allocate the array where the tracks are stored
-    // This is the largest allocation. If it does not fit, we need to try again:
-    Track *trackStorage_dev = nullptr;
-    gpuMalloc(trackStorage_dev, nSlot);
-
-    gpuState.particles[i].tracks = trackStorage_dev;
-
-    // Second track buffer
-    Track *trackStorageNext_dev = nullptr;
-    gpuMalloc(trackStorageNext_dev, nSlot);
-
-    gpuState.particles[i].nextTracks = trackStorageNext_dev;
-
-    // ALlocate space for the leaks
-    Track *leakStorage_dev = nullptr;
-    gpuMalloc(leakStorage_dev, nLeakSlots);
-
-    gpuState.particles[i].leaks = leakStorage_dev;
-
-    // Allocate space for injecting tracks
-    Track *injectionStorage_dev = nullptr;
-    gpuMalloc(injectionStorage_dev, nInjectionSlots);
-
-    gpuState.particles[i].injected = injectionStorage_dev;
-
     ///////////////////////////////////////////////////////////////////
 
     short *scanFlags_dev = nullptr;
@@ -1219,15 +1192,12 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
       // * The stats count acts only on the active queue
 
       const Secondaries secondaries = {
-          .electrons = {electrons.tracks, electrons.soaTrack, electrons.nextTracks, electrons.soaNextTrack,
-                        electrons.injected, electrons.soaInjected, electrons.slotManager, electrons.slotManagerLeaks,
-                        electrons.slotManagerInjection, electrons.queues.nextActive},
-          .positrons = {positrons.tracks, positrons.soaTrack, positrons.nextTracks, positrons.soaNextTrack,
-                        positrons.injected, positrons.soaInjected, positrons.slotManager, positrons.slotManagerLeaks,
-                        positrons.slotManagerInjection, positrons.queues.nextActive},
-          .gammas    = {gammas.tracks, gammas.soaTrack, gammas.nextTracks, gammas.soaNextTrack, gammas.injected,
-                        gammas.soaInjected, gammas.slotManager, gammas.slotManagerLeaks, gammas.slotManagerInjection,
-                        gammas.queues.nextActive},
+          .electrons = {electrons.soaTrack, electrons.soaNextTrack, electrons.soaInjected, electrons.slotManager,
+                        electrons.slotManagerLeaks, electrons.slotManagerInjection, electrons.queues.nextActive},
+          .positrons = {positrons.soaTrack, positrons.soaNextTrack, positrons.soaInjected, positrons.slotManager,
+                        positrons.slotManagerLeaks, positrons.slotManagerInjection, positrons.queues.nextActive},
+          .gammas    = {gammas.soaTrack, gammas.soaNextTrack, gammas.soaInjected, gammas.slotManager,
+                        gammas.slotManagerLeaks, gammas.slotManagerInjection, gammas.queues.nextActive},
       };
       const AllParticleQueues allParticleQueues = {{electrons.queues, positrons.queues, gammas.queues}};
 #ifdef USE_SPLIT_KERNELS
@@ -1243,13 +1213,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
            positrons.queues.interactionQueues[4]}};
 #endif
       const TracksAndSlots tracksAndSlots = {
-          {electrons.tracks, positrons.tracks, gammas.tracks},
           {electrons.soaTrack, positrons.soaTrack, gammas.soaTrack},
-          {electrons.nextTracks, positrons.nextTracks, gammas.nextTracks},
           {electrons.soaNextTrack, positrons.soaNextTrack, gammas.soaNextTrack},
-          {electrons.leaks, positrons.leaks, gammas.leaks},
           {electrons.soaLeaks, positrons.soaLeaks, gammas.soaLeaks},
-          {electrons.injected, positrons.injected, gammas.injected},
           {electrons.soaInjected, positrons.soaInjected, gammas.soaInjected},
           {electrons.slotManager, positrons.slotManager, gammas.slotManager},
           {electrons.slotManagerLeaks, positrons.slotManagerLeaks, gammas.slotManagerLeaks},
@@ -1336,45 +1302,40 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         SortQueue<<<1, 1, 0, electrons.stream>>>(electrons.queues.initiallyActive);
 
         ElectronHowFar<true><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, electrons.leaks, electrons.soaLeaks,
-            gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.initiallyActive, secondaries,
-            electrons.queues.nextActive, electrons.queues.propagation, electrons.queues.leakedTracksCurrent,
-            gpuState.stats_dev, allowFinishOffEvent);
+            electrons.soaTrack, electrons.soaLeaks, gpuState.hepEmBuffers_d.electronsHepEm,
+            electrons.queues.initiallyActive, secondaries, electrons.queues.nextActive, electrons.queues.propagation,
+            electrons.queues.leakedTracksCurrent, gpuState.stats_dev, allowFinishOffEvent);
 
         SortQueue<<<1, 1, 0, electrons.stream>>>(electrons.queues.propagation);
 
         ElectronPropagation<true><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.propagation,
+            electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.propagation,
             electrons.queues.leakedTracksCurrent);
         ElectronMSC<true><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.propagation);
+            electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.propagation);
         ElectronSetupInteractions<true, PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, electrons.leaks, electrons.soaLeaks,
-            gpuState.hepEmBuffers_d.electronsHepEm, electrons.queues.propagation, secondaries,
-            electrons.queues.nextActive, allElectronInteractionQueues, electrons.queues.leakedTracksCurrent,
-            gpuState.fScoring_dev, returnAllSteps, returnLastStep);
+            electrons.soaTrack, electrons.soaLeaks, gpuState.hepEmBuffers_d.electronsHepEm,
+            electrons.queues.propagation, secondaries, electrons.queues.nextActive, allElectronInteractionQueues,
+            electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         ElectronRelocation<true, PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, electrons.leaks, electrons.soaLeaks,
-            gpuState.hepEmBuffers_d.electronsHepEm, secondaries, electrons.queues.nextActive,
-            electrons.queues.interactionQueues[4], electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
-            returnAllSteps, returnLastStep);
+            electrons.soaTrack, electrons.soaLeaks, gpuState.hepEmBuffers_d.electronsHepEm, secondaries,
+            electrons.queues.nextActive, electrons.queues.interactionQueues[4], electrons.queues.leakedTracksCurrent,
+            gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         // printf("IN SECONDARIES: %p\n", secondaries.electrons.fSoANextTracks);
         // printf("PASSED TO ELECTRONS KERNEL: %p\n", electrons.soaNextTrack);
         // cudaDeviceSynchronize();
         ElectronIonization<true, PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries,
-            electrons.queues.nextActive, electrons.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps,
-            returnLastStep);
+            electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries, electrons.queues.nextActive,
+            electrons.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         ElectronBremsstrahlung<true, PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries,
-            electrons.queues.nextActive, electrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps,
-            returnLastStep);
+            electrons.soaTrack, gpuState.hepEmBuffers_d.electronsHepEm, secondaries, electrons.queues.nextActive,
+            electrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         // debugPrintKernel<<<1, 1, 0, electrons.stream>>>(0, electrons.queues.nextActive);
 #else
         TransportElectrons<PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.leaks, electrons.queues.initiallyActive, secondaries,
-            electrons.queues.nextActive, electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
-            gpuState.stats_dev, allowFinishOffEvent, returnAllSteps, returnLastStep);
+            electrons.queues.initiallyActive, secondaries, electrons.queues.nextActive,
+            electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent,
+            returnAllSteps, returnLastStep);
 #endif
         COPCORE_CUDA_CHECK(cudaEventRecord(electrons.event, electrons.stream));
         COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, electrons.event, 0));
@@ -1394,53 +1355,46 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         SortQueue<<<1, 1, 0, positrons.stream>>>(positrons.queues.initiallyActive);
 
         ElectronHowFar<false><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, positrons.leaks, positrons.soaLeaks,
-            gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.initiallyActive, secondaries,
-            positrons.queues.nextActive, positrons.queues.propagation, positrons.queues.leakedTracksCurrent,
-            gpuState.stats_dev, allowFinishOffEvent);
+            positrons.soaTrack, positrons.soaLeaks, gpuState.hepEmBuffers_d.positronsHepEm,
+            positrons.queues.initiallyActive, secondaries, positrons.queues.nextActive, positrons.queues.propagation,
+            positrons.queues.leakedTracksCurrent, gpuState.stats_dev, allowFinishOffEvent);
 
         SortQueue<<<1, 1, 0, positrons.stream>>>(positrons.queues.propagation);
 
         ElectronPropagation<false><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.propagation,
+            positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.propagation,
             positrons.queues.leakedTracksCurrent);
         ElectronMSC<false><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.propagation);
+            positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.propagation);
         ElectronSetupInteractions<false, PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, positrons.leaks, positrons.soaLeaks,
-            gpuState.hepEmBuffers_d.positronsHepEm, positrons.queues.propagation, secondaries,
-            positrons.queues.nextActive, allPositronInteractionQueues, positrons.queues.leakedTracksCurrent,
-            gpuState.fScoring_dev, returnAllSteps, returnLastStep);
+            positrons.soaTrack, positrons.soaLeaks, gpuState.hepEmBuffers_d.positronsHepEm,
+            positrons.queues.propagation, secondaries, positrons.queues.nextActive, allPositronInteractionQueues,
+            positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         ElectronRelocation<false, PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, positrons.leaks, positrons.soaLeaks,
-            gpuState.hepEmBuffers_d.positronsHepEm, secondaries, positrons.queues.nextActive,
-            positrons.queues.interactionQueues[4], positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
-            returnAllSteps, returnLastStep);
+            positrons.soaTrack, positrons.soaLeaks, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
+            positrons.queues.nextActive, positrons.queues.interactionQueues[4], positrons.queues.leakedTracksCurrent,
+            gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         // printf("IN SECONDARIES: %p\n", secondaries.positrons.fSoANextTracks);
         // printf("PASSED TO POSITRONS KERNEL: %p\n", positrons.soaNextTrack);
         // cudaDeviceSynchronize();
         ElectronIonization<false, PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
-            positrons.queues.nextActive, positrons.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps,
-            returnLastStep);
+            positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries, positrons.queues.nextActive,
+            positrons.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         ElectronBremsstrahlung<false, PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
-            positrons.queues.nextActive, positrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps,
-            returnLastStep);
+            positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries, positrons.queues.nextActive,
+            positrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         PositronAnnihilation<PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
-            positrons.queues.nextActive, positrons.queues.interactionQueues[2], gpuState.fScoring_dev, returnAllSteps,
-            returnLastStep);
+            positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries, positrons.queues.nextActive,
+            positrons.queues.interactionQueues[2], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         PositronStoppedAnnihilation<PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries,
-            positrons.queues.nextActive, positrons.queues.interactionQueues[3], gpuState.fScoring_dev, returnAllSteps,
-            returnLastStep);
+            positrons.soaTrack, gpuState.hepEmBuffers_d.positronsHepEm, secondaries, positrons.queues.nextActive,
+            positrons.queues.interactionQueues[3], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         // debugPrintKernel<<<1, 1, 0, positrons.stream>>>(1, positrons.queues.nextActive);
 #else
         TransportPositrons<PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.leaks, positrons.queues.initiallyActive, secondaries,
-            positrons.queues.nextActive, positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
-            gpuState.stats_dev, allowFinishOffEvent, returnAllSteps, returnLastStep);
+            positrons.queues.initiallyActive, secondaries, positrons.queues.nextActive,
+            positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent,
+            returnAllSteps, returnLastStep);
 #endif
 
         COPCORE_CUDA_CHECK(cudaEventRecord(positrons.event, positrons.stream));
@@ -1461,41 +1415,41 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
         SortQueue<<<1, 1, 0, gammas.stream>>>(gammas.queues.initiallyActive);
 
         GammaHowFar<<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gammas.leaks, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm,
-            gammas.queues.initiallyActive, secondaries, gammas.queues.propagation, gammas.queues.leakedTracksCurrent,
-            gpuState.stats_dev, allowFinishOffEvent);
+            gammas.soaTrack, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm, gammas.queues.initiallyActive,
+            secondaries, gammas.queues.propagation, gammas.queues.leakedTracksCurrent, gpuState.stats_dev,
+            allowFinishOffEvent);
 
         SortQueue<<<1, 1, 0, gammas.stream>>>(gammas.queues.propagation);
 
-        GammaPropagation<<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, gammas.queues.propagation);
+        GammaPropagation<<<blocks, threads, 0, gammas.stream>>>(gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm,
+                                                                gammas.queues.propagation);
         GammaSetupInteractions<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gammas.leaks, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm,
-            gammas.queues.propagation, secondaries, gammas.queues.nextActive, allGammaInteractionQueues,
-            gammas.queues.leakedTracksCurrent, gpuState.fScoring_dev);
+            gammas.soaTrack, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm, gammas.queues.propagation,
+            secondaries, gammas.queues.nextActive, allGammaInteractionQueues, gammas.queues.leakedTracksCurrent,
+            gpuState.fScoring_dev);
         GammaRelocation<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gammas.leaks, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm,
-            secondaries, gammas.queues.nextActive, gammas.queues.interactionQueues[4],
-            gammas.queues.leakedTracksCurrent, gpuState.fScoring_dev, returnAllSteps, returnLastStep);
+            gammas.soaTrack, gammas.soaLeaks, gpuState.hepEmBuffers_d.gammasHepEm, secondaries,
+            gammas.queues.nextActive, gammas.queues.interactionQueues[4], gammas.queues.leakedTracksCurrent,
+            gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         // Copying the number of interacting tracks back to host and using this information to adjust
         // the launch parameters of the interactions kernel is complicated and expensive due to a
         // required additional kernel launch and copy. Instead, launch the kernels with the same
         // parameters, the unneeded threads inmediately return and become free again.
         GammaConversion<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
+            gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
             gammas.queues.interactionQueues[0], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         GammaCompton<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
+            gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
             gammas.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         GammaPhotoelectric<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
+            gammas.soaTrack, gpuState.hepEmBuffers_d.gammasHepEm, secondaries, gammas.queues.nextActive,
             gammas.queues.interactionQueues[2], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
         // debugPrintKernel<<<1, 1, 0, gammas.stream>>>(2, gammas.queues.nextActive);
 #else
         TransportGammas<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.leaks, gammas.queues.initiallyActive, secondaries, gammas.queues.nextActive,
-            gammas.queues.leakedTracksCurrent, gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent,
-            returnAllSteps, returnLastStep); //, gpuState.gammaInteractions);
+            gammas.queues.initiallyActive, secondaries, gammas.queues.nextActive, gammas.queues.leakedTracksCurrent,
+            gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent, returnAllSteps,
+            returnLastStep); //, gpuState.gammaInteractions);
 #endif
 
         // constexpr unsigned int intThreads = 128;
@@ -1617,12 +1571,10 @@ void TransportLoop(int trackCapacity, int leakCapacity, int injectionCapacity, i
           trackBuffer.fNumLeaksTransferred = 0;
 
           // This struct will hold the queues that need to be flushed
-          allLeaked = {.leakedElectrons = {electrons.leaks, electrons.soaLeaks, electrons.queues.leakedTracksCurrent,
-                                           electrons.slotManagerLeaks},
-                       .leakedPositrons = {positrons.leaks, positrons.soaLeaks, positrons.queues.leakedTracksCurrent,
-                                           positrons.slotManagerLeaks},
-                       .leakedGammas    = {gammas.leaks, gammas.soaLeaks, gammas.queues.leakedTracksCurrent,
-                                           gammas.slotManagerLeaks}};
+          allLeaked = {
+              .leakedElectrons = {electrons.soaLeaks, electrons.queues.leakedTracksCurrent, electrons.slotManagerLeaks},
+              .leakedPositrons = {positrons.soaLeaks, positrons.queues.leakedTracksCurrent, positrons.slotManagerLeaks},
+              .leakedGammas    = {gammas.soaLeaks, gammas.queues.leakedTracksCurrent, gammas.slotManagerLeaks}};
 
           // Ensure that transport that's writing to the old queues finishes before collecting leaked tracks
           for (auto const &event : {electrons.event, positrons.event, gammas.event}) {

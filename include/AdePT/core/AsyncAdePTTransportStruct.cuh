@@ -32,11 +32,8 @@ namespace AsyncAdePT {
 
 // A bundle of pointers to generate particles of an implicit type.
 struct ParticleGenerator {
-  Track *fTracks;
   SoATrack *fSoATracks;
-  Track *fNextTracks;
   SoATrack *fSoANextTracks;
-  Track *fInjectedTracks;
   SoATrack *fSoAInjected;
   SlotManager *fSlotManager;
   SlotManager *fSlotManagerLeaks;
@@ -44,12 +41,10 @@ struct ParticleGenerator {
   adept::MParray *fActiveQueue;
 
 public:
-  __host__ __device__ ParticleGenerator(Track *tracks, SoATrack *soaTracks, Track *nextTracks, SoATrack *soaNextTracks,
-                                        Track *injectedTracks, SoATrack *soaInjected, SlotManager *slotManager,
-                                        SlotManager *slotManagerLeaks, SlotManager *slotManagerInjection,
-                                        adept::MParray *activeQueue)
-      : fTracks(tracks), fSoATracks(soaTracks), fNextTracks(nextTracks), fSoANextTracks(soaNextTracks),
-        fInjectedTracks(injectedTracks), fSoAInjected(soaInjected), fSlotManager(slotManager),
+  __host__ __device__ ParticleGenerator(SoATrack *soaTracks, SoATrack *soaNextTracks, SoATrack *soaInjected,
+                                        SlotManager *slotManager, SlotManager *slotManagerLeaks,
+                                        SlotManager *slotManagerInjection, adept::MParray *activeQueue)
+      : fSoATracks(soaTracks), fSoANextTracks(soaNextTracks), fSoAInjected(soaInjected), fSlotManager(slotManager),
         fSlotManagerLeaks(slotManagerLeaks), fSlotManagerInjection(slotManagerInjection), fActiveQueue(activeQueue)
   {
   }
@@ -63,42 +58,35 @@ public:
 
   /// Construct a track at the given location, forwarding all arguments to the constructor.
   template <typename... Ts>
-  __device__ Track &InitTrack(SlotManager::value_type slot, Ts &&...args)
+  __device__ void InitTrack(SlotManager::value_type slot, Ts &&...args)
   {
     // Initialize the values in the SoA storage
     fSoANextTracks->InitTrack(slot, std::forward<Ts>(args)...);
-    // Init the main track
-    return *new (fNextTracks + slot) Track{std::forward<Ts>(args)...};
   }
 
   /// Construct a track at the given location, forwarding all arguments to the constructor.
   template <typename... Ts>
-  __device__ Track &InitInjectedTrack(SlotManager::value_type slot, Ts &&...args)
+  __device__ void InitInjectedTrack(SlotManager::value_type slot, Ts &&...args)
   {
     // Initialize the values in the SoA storage
     fSoAInjected->InitTrack(slot, std::forward<Ts>(args)...);
-    // Init the main track
-    return *new (fInjectedTracks + slot) Track{std::forward<Ts>(args)...};
   }
 
   /// Obtain a slot and construct a track, forwarding args to the track constructor.
   template <typename... Ts>
-  __device__ Track &NextTrack(Ts &&...args)
+  __device__ unsigned int NextTrack(Ts &&...args)
   {
     const auto slot = NextSlot();
     fActiveQueue->push_back(slot);
     // Init the track
-    auto &track = InitTrack(slot, std::forward<Ts>(args)...);
-    // IMPORTANT: Only needed during the transition from AoS to SoA
-    track.currentSlot = slot;
-    return track;
+    InitTrack(slot, std::forward<Ts>(args)...);
+    return slot;
   }
 
   void SetActiveQueue(adept::MParray *queue) { fActiveQueue = queue; }
 };
 
 struct LeakedTracks {
-  Track *fLeaks;
   SoATrack *fSoALeaks;
   adept::MParray *fLeakedQueue;
   SlotManager *fSlotManager;
@@ -185,73 +173,69 @@ dynamic allocations
   void SwapLeakedQueue() { std::swap(leakedTracksCurrent, leakedTracksNext); }
 };
 
-__global__ void ClearOccupiedFlags(unsigned int nItems, short *scanFlags)
-{
-  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nItems; i += blockDim.x) {
-    scanFlags[i] = 0;
-  }
-}
+// __global__ void ClearOccupiedFlags(unsigned int nItems, short *scanFlags)
+// {
+//   for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nItems; i += blockDim.x) {
+//     scanFlags[i] = 0;
+//   }
+// }
 
-__global__ void MarkOccupiedSlots(adept::MParray *activeQueue, short *scanFlags)
-{
-  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < activeQueue->size(); i += blockDim.x) {
-    scanFlags[(*activeQueue)[i]] = 1;
-  }
-}
+// __global__ void MarkOccupiedSlots(adept::MParray *activeQueue, short *scanFlags)
+// {
+//   for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < activeQueue->size(); i += blockDim.x) {
+//     scanFlags[(*activeQueue)[i]] = 1;
+//   }
+// }
 
-__global__ void CompactCopy(unsigned int nItems, Track *trackSrc, Track *trackDst, SoATrack *soaTrackSrc,
-                            SoATrack *soaTrackDst, adept::MParray *activeQueue
-                            /*, short *scanFlags, int *scanResult, G4HepEmElectronTrack *electronsHepEm*/)
-{
-  auto nUsed = activeQueue->size();
-  // Note: would be more efficient to compute the max occupied index and use it to limit the for loop
-  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nUsed; i += blockDim.x) {
-    auto src = (*activeQueue)[i];
-    // Copy AdePT Tracks
-    trackDst[i] = trackSrc[src];
-    // Copy AdePT SoA Tracks
-    soaTrackDst->fEkin[i]      = soaTrackSrc->fEkin[src];
-    soaTrackDst->fSafety[i]    = soaTrackSrc->fSafety[src];
-    soaTrackDst->fSafetyPos[i] = soaTrackSrc->fSafetyPos[src];
-    // Copy G4HepEm tracks
-    // electronsHepEm[i] = electronsHepEm[src];
-  }
-}
+// __global__ void CompactCopy(unsigned int nItems, Track *trackSrc, Track *trackDst, SoATrack *soaTrackSrc,
+//                             SoATrack *soaTrackDst, adept::MParray *activeQueue
+//                             /*, short *scanFlags, int *scanResult, G4HepEmElectronTrack *electronsHepEm*/)
+// {
+//   auto nUsed = activeQueue->size();
+//   // Note: would be more efficient to compute the max occupied index and use it to limit the for loop
+//   for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < nUsed; i += blockDim.x) {
+//     auto src = (*activeQueue)[i];
+//     // Copy AdePT Tracks
+//     trackDst[i] = trackSrc[src];
+//     // Copy AdePT SoA Tracks
+//     soaTrackDst->fEkin[i]      = soaTrackSrc->fEkin[src];
+//     soaTrackDst->fSafety[i]    = soaTrackSrc->fSafety[src];
+//     soaTrackDst->fSafetyPos[i] = soaTrackSrc->fSafetyPos[src];
+//     // Copy G4HepEm tracks
+//     // electronsHepEm[i] = electronsHepEm[src];
+//   }
+// }
 
-__global__ void UpdateActiveIdx(adept::MParray *activeQueue, SlotManager *slotManager)
-{
-  // if (threadIdx.x == 0 && blockIdx.x == 0) {
-  // printf("Nused before %ld\n", activeQueue->size());
+// __global__ void UpdateActiveIdx(adept::MParray *activeQueue, SlotManager *slotManager)
+// {
+//   // if (threadIdx.x == 0 && blockIdx.x == 0) {
+//   // printf("Nused before %ld\n", activeQueue->size());
 
-  // activeQueue->fNbooked.store(0);
-  // activeQueue->fNused.store(slotManager->fSlotCounter);
+//   // activeQueue->fNbooked.store(0);
+//   // activeQueue->fNused.store(slotManager->fSlotCounter);
 
-  // printf("Nused updated %ld\n", activeQueue->size());
-  // }
-  for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < slotManager->fSlotCounter; i += blockDim.x) {
-    activeQueue->fData[i] = i;
-  }
-}
+//   // printf("Nused updated %ld\n", activeQueue->size());
+//   // }
+//   for (int i = threadIdx.x + blockDim.x * blockIdx.x; i < slotManager->fSlotCounter; i += blockDim.x) {
+//     activeQueue->fData[i] = i;
+//   }
+// }
 
-__global__ void ClearSlotManagerStage1(SlotManager *slotManager)
-{
-  slotManager->PartialClearStage1();
-}
+// __global__ void ClearSlotManagerStage1(SlotManager *slotManager)
+// {
+//   slotManager->PartialClearStage1();
+// }
 
-__global__ void ClearSlotManagerStage2(SlotManager *slotManager)
-{
-  slotManager->PartialClearStage2();
-}
+// __global__ void ClearSlotManagerStage2(SlotManager *slotManager)
+// {
+//   slotManager->PartialClearStage2();
+// }
 
 // Holds all information needed to manage in-flight tracks of one type
 struct ParticleType {
-  Track *tracks;
-  Track *nextTracks;
   SoATrack *soaTrack;
   SoATrack *soaNextTrack;
-  Track *leaks;
   SoATrack *soaLeaks;
-  Track *injected;
   SoATrack *soaInjected;
   SlotManager *slotManager;
   SlotManager *slotManagerLeaks;
@@ -272,49 +256,47 @@ struct ParticleType {
   };
   static constexpr double relativeQueueSize[] = {0.35, 0.15, 0.5};
 
-  void SwapActiveTracks()
-  {
-    std::swap(tracks, nextTracks);
-    std::swap(soaTrack, soaNextTrack);
-  }
+  void SwapActiveTracks() { std::swap(soaTrack, soaNextTrack); }
 
-  void Defragment(/*unsigned int nItems, short *scanFlags, int *scanResult*/ /*G4HepEmElectronTrack *electronsHepEm,*/
-                  Track *trackSrc, Track *trackDst, SoATrack *soaTrackSrc, SoATrack *soaTrackDst, cudaStream_t stream)
-  {
-    // Initialize flags
-    // cudaMemset(scanFlags, 0, nItems * sizeof(short));
-    // ClearOccupiedFlags<<<100, 256, 0, stream>>>(nItems, scanFlags);
+  // void Defragment(/*unsigned int nItems, short *scanFlags, int *scanResult*/ /*G4HepEmElectronTrack
+  // *electronsHepEm,*/
+  //                 Track *trackSrc, Track *trackDst, SoATrack *soaTrackSrc, SoATrack *soaTrackDst, cudaStream_t
+  //                 stream)
+  // {
+  //   // Initialize flags
+  //   // cudaMemset(scanFlags, 0, nItems * sizeof(short));
+  //   // ClearOccupiedFlags<<<100, 256, 0, stream>>>(nItems, scanFlags);
 
-    // Mark used slots
-    // MarkOccupiedSlots<<<100, 256, 0, stream>>>(queues.nextActive, scanFlags);
+  //   // Mark used slots
+  //   // MarkOccupiedSlots<<<100, 256, 0, stream>>>(queues.nextActive, scanFlags);
 
-    // Do the scan
-    // thrust::device_ptr<short> flags_thrust(scanFlags);
-    // thrust::device_ptr<int> scan_thrust(scanResult);
-    // thrust::exclusive_scan(scanFlags, scanFlags + nItems, scanResult);
+  //   // Do the scan
+  //   // thrust::device_ptr<short> flags_thrust(scanFlags);
+  //   // thrust::device_ptr<int> scan_thrust(scanResult);
+  //   // thrust::exclusive_scan(scanFlags, scanFlags + nItems, scanResult);
 
-    // thrust::device_ptr<short> flags_thrust(scanFlags);
-    // thrust::device_ptr<int> scan_thrust(scanResult);
-    // thrust::exclusive_scan(thrust::cuda::par.on(stream), flags_thrust, flags_thrust + nItems, scan_thrust, 0);
+  //   // thrust::device_ptr<short> flags_thrust(scanFlags);
+  //   // thrust::device_ptr<int> scan_thrust(scanResult);
+  //   // thrust::exclusive_scan(thrust::cuda::par.on(stream), flags_thrust, flags_thrust + nItems, scan_thrust, 0);
 
-    // queues.nextActive->sort(stream);
+  //   // queues.nextActive->sort(stream);
 
-    // Copy each item into to its destination:
-    // - Tracks
-    // - SoA elements
-    // - HepEmTracks
-    CompactCopy<<<100, 256, 0, stream>>>(nItems, trackSrc, trackDst, soaTrackSrc, soaTrackDst, queues.nextActive
-                                         /*, scanFlags, scanResult, electronsHepEm*/);
+  //   // Copy each item into to its destination:
+  //   // - Tracks
+  //   // - SoA elements
+  //   // - HepEmTracks
+  //   CompactCopy<<<100, 256, 0, stream>>>(nItems, trackSrc, trackDst, soaTrackSrc, soaTrackDst, queues.nextActive
+  //                                        /*, scanFlags, scanResult, electronsHepEm*/);
 
-    // Reset slot manager:
-    // - Set fSlotList[fSlotCounter:] to fSlotCounter.nItems
-    // - Set fFreeCounter to 0 (We should not need to reinitialize the actual free slots list)
-    ClearSlotManagerStage1<<<1000, 32, 0, stream>>>(slotManager);
-    ClearSlotManagerStage2<<<1, 1, 0, stream>>>(slotManager);
+  //   // Reset slot manager:
+  //   // - Set fSlotList[fSlotCounter:] to fSlotCounter.nItems
+  //   // - Set fFreeCounter to 0 (We should not need to reinitialize the actual free slots list)
+  //   ClearSlotManagerStage1<<<1000, 32, 0, stream>>>(slotManager);
+  //   ClearSlotManagerStage2<<<1, 1, 0, stream>>>(slotManager);
 
-    // Reset track indices array
-    UpdateActiveIdx<<<1000, 32, 0, stream>>>(queues.nextActive, slotManager);
-  }
+  //   // Reset track indices array
+  //   UpdateActiveIdx<<<1000, 32, 0, stream>>>(queues.nextActive, slotManager);
+  // }
 };
 
 #ifdef USE_SPLIT_KERNELS
@@ -332,13 +314,9 @@ struct AllInteractionQueues {
 
 // Pointers to track storage for each particle type
 struct TracksAndSlots {
-  Track *const tracks[ParticleType::NumParticleTypes];
   SoATrack *const soaTracks[ParticleType::NumParticleTypes];
-  Track *const nextTracks[ParticleType::NumParticleTypes];
   SoATrack *const soaNextTracks[ParticleType::NumParticleTypes];
-  Track *const leaks[ParticleType::NumParticleTypes];
   SoATrack *const soaLeaks[ParticleType::NumParticleTypes];
-  Track *const injected[ParticleType::NumParticleTypes];
   SoATrack *const soaInjected[ParticleType::NumParticleTypes];
   SlotManager *const slotManagers[ParticleType::NumParticleTypes];
   SlotManager *const slotManagersLeaks[ParticleType::NumParticleTypes];

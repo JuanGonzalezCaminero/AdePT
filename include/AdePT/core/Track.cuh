@@ -98,11 +98,10 @@ struct SoATrack {
   }
 
   // Construct a track from a parent track
-  template <typename... Args>
   __device__ void InitTrack(int trackSlot, double eKin, const vecgeom::Vector3D<Precision> &pos,
                             const vecgeom::Vector3D<Precision> &dir, const double globalTime, SoATrack *parentSoATrack,
                             int parentTrackSlot, RanluxppDouble const &rngState,
-                            const vecgeom::NavigationState &newNavState, Args...)
+                            const vecgeom::NavigationState &newNavState)
   {
     // fRngState[trackIdx].SetSeed(rngSeed);
     fEkin[trackSlot]   = eKin;
@@ -160,6 +159,7 @@ struct SoATrack {
   __host__ __device__ double Uniform(int trackSlot) { return fRngState[trackSlot].Rndm(); }
 };
 
+/*
 // A data structure to represent a particle track. The particle type is implicit
 // by the queue and not stored in memory.
 struct Track {
@@ -178,7 +178,7 @@ struct Track {
   //   long hitsurfID{0};
   // #endif
 
-  unsigned int currentSlot{0};
+  // unsigned int currentSlot{0};
 
   // #ifdef USE_SPLIT_KERNELS
   //   bool propagated{false};
@@ -284,4 +284,5 @@ struct Track {
     // tdata.stepCounter = stepCounter;
   }
 };
+*/
 #endif

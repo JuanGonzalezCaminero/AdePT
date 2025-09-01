@@ -697,7 +697,7 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
     printf("%lu track slots allocated for particle type %d on GPU (%.2lf%% of %d total slots allocated)\n", nSlot, i,
            ParticleType::relativeQueueSize[i] * 100, trackCapacity);
 
-#ifdef USE_SPLIT_KERNELS
+    // #ifdef USE_SPLIT_KERNELS
     // Allocate an array of HepEm tracks per particle type
     switch (i) {
     case 0: // Electrons
@@ -713,7 +713,7 @@ std::unique_ptr<GPUstate, GPUstateDeleter> InitializeGPU(int trackCapacity, int 
       printf("Error: Undefined particle type");
       break;
     }
-#endif
+    // #endif
   }
 
   // NOTE: deprecated GammaInteractions
@@ -1079,8 +1079,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
             electrons.queues.interactionQueues[1], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
 #else
         TransportElectrons<PerEventScoring><<<blocks, threads, 0, electrons.stream>>>(
-            electrons.tracks, electrons.leaks, electrons.queues.initiallyActive, secondaries,
-            electrons.queues.nextActive, electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
+            electrons.tracks, gpuState.hepEmBuffers_d.electronsHepEm, electrons.leaks, electrons.queues.initiallyActive,
+            secondaries, electrons.queues.nextActive, electrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
             gpuState.stats_dev, allowFinishOffEvent, returnAllSteps, returnLastStep);
 #endif
         COPCORE_CUDA_CHECK(cudaEventRecord(electrons.event, electrons.stream));
@@ -1126,8 +1126,8 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
             positrons.queues.interactionQueues[3], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
 #else
         TransportPositrons<PerEventScoring><<<blocks, threads, 0, positrons.stream>>>(
-            positrons.tracks, positrons.leaks, positrons.queues.initiallyActive, secondaries,
-            positrons.queues.nextActive, positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
+            positrons.tracks, gpuState.hepEmBuffers_d.positronsHepEm, positrons.leaks, positrons.queues.initiallyActive,
+            secondaries, positrons.queues.nextActive, positrons.queues.leakedTracksCurrent, gpuState.fScoring_dev,
             gpuState.stats_dev, allowFinishOffEvent, returnAllSteps, returnLastStep);
 #endif
 
@@ -1172,9 +1172,9 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
             gammas.queues.interactionQueues[2], gpuState.fScoring_dev, returnAllSteps, returnLastStep);
 #else
         TransportGammas<PerEventScoring><<<blocks, threads, 0, gammas.stream>>>(
-            gammas.tracks, gammas.leaks, gammas.queues.initiallyActive, secondaries, gammas.queues.nextActive,
-            gammas.queues.leakedTracksCurrent, gpuState.fScoring_dev, gpuState.stats_dev, allowFinishOffEvent,
-            returnAllSteps, returnLastStep); //, gpuState.gammaInteractions);
+            gammas.tracks, gpuState.hepEmBuffers_d.gammasHepEm, gammas.leaks, gammas.queues.initiallyActive,
+            secondaries, gammas.queues.nextActive, gammas.queues.leakedTracksCurrent, gpuState.fScoring_dev,
+            gpuState.stats_dev, allowFinishOffEvent, returnAllSteps, returnLastStep); //, gpuState.gammaInteractions);
 #endif
 
         // constexpr unsigned int intThreads = 128;

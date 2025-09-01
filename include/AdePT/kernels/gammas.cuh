@@ -25,10 +25,10 @@ namespace AsyncAdePT {
 // Asynchronous TransportGammas Interface
 template <typename Scoring>
 __global__ void __launch_bounds__(256, 1)
-    TransportGammas(Track *gammas, Track *leaks, const adept::MParray *active, Secondaries secondaries,
-                    adept::MParray *nextActiveQueue, adept::MParray *leakedQueue, Scoring *userScoring,
-                    Stats *InFlightStats, AllowFinishOffEventArray allowFinishOffEvent, const bool returnAllSteps,
-                    const bool returnLastStep)
+    TransportGammas(Track *gammas, G4HepEmGammaTrack *hepEMTracks, Track *leaks, const adept::MParray *active,
+                    Secondaries secondaries, adept::MParray *nextActiveQueue, adept::MParray *leakedQueue,
+                    Scoring *userScoring, Stats *InFlightStats, AllowFinishOffEventArray allowFinishOffEvent,
+                    const bool returnAllSteps, const bool returnLastStep)
 {
   constexpr Precision kPushDistance = 1000 * vecgeom::kTolerance;
   constexpr unsigned short maxSteps = 10'000;
@@ -98,11 +98,29 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
     }
 #endif
 
+    // Init a track with the needed data to call into G4HepEm.
+    G4HepEmGammaTrack &gammaTrack = hepEMTracks[slot];
+    G4HepEmTrack *theTrack        = gammaTrack.GetTrack();
+    if (!currentTrack.hepEmTrackExists) {
+      // Init a track with the needed data to call into G4HepEm.
+      gammaTrack.ReSet();
+      theTrack->SetEKin(currentTrack.eKin);
+      theTrack->SetMCIndex(auxData.fMCIndex);
+      currentTrack.hepEmTrackExists = true;
+    }
+    // Re-sample the `number-of-interaction-left` (if needed, otherwise use stored numIALeft) and put it into the
+    // G4HepEmTrack. Use index 0 since numIALeft for gammas is based only on the total macroscopic cross section. The
+    // currentTrack.numIALeft[0] are updated later
+    if (theTrack->GetNumIALeft(0) <= 0.0) {
+      theTrack->SetNumIALeft(-std::log(currentTrack.Uniform()), 0);
+    }
+
     // Write local variables back into track and enqueue
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
       isLastStep = false; // set to false even for gamma nuclear, as the hostTrackData is deleted when invoking the
                           // reaction on CPU
-      currentTrack.eKin       = eKin;
+      currentTrack.eKin = eKin;
+      theTrack->SetEKin(eKin);
       currentTrack.pos        = pos;
       currentTrack.dir        = dir;
       currentTrack.globalTime = globalTime;
@@ -137,21 +155,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
       }
 #endif
     };
-
-    // Init a track with the needed data to call into G4HepEm.
-    G4HepEmGammaTrack gammaTrack;
-    G4HepEmTrack *theTrack = gammaTrack.GetTrack();
-    theTrack->SetEKin(eKin);
-    theTrack->SetMCIndex(auxData.fMCIndex);
-
-    // Re-sample the `number-of-interaction-left` (if needed, otherwise use stored numIALeft) and put it into the
-    // G4HepEmTrack. Use index 0 since numIALeft for gammas is based only on the total macroscopic cross section. The
-    // currentTrack.numIALeft[0] are updated later
-    if (currentTrack.numIALeft[0] <= 0.0) {
-      theTrack->SetNumIALeft(-std::log(currentTrack.Uniform()), 0);
-    } else {
-      theTrack->SetNumIALeft(currentTrack.numIALeft[0], 0);
-    }
 
     // Call G4HepEm to compute the physics step limit.
     G4HepEmGammaManager::HowFar(&g4HepEmData, &g4HepEmPars, &gammaTrack);
@@ -217,11 +220,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
 
         G4HepEmGammaManager::UpdateNumIALeft(theTrack);
 
-        // Save the `number-of-interaction-left` in our track.
-        // Use index 0 since numIALeft stores for gammas only the total macroscopic cross section
-        double numIALeft          = theTrack->GetNumIALeft(0);
-        currentTrack.numIALeft[0] = numIALeft;
-
 #ifdef ADEPT_USE_SURF
         AdePTNavigator::RelocateToNextVolume(pos, dir, hitsurf_index, nextState);
 #else
@@ -245,6 +243,7 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
 #endif
 
         if (nextauxData.fGPUregion > 0) {
+          theTrack->SetMCIndex(nextauxData.fMCIndex);
           surviveFlag = true;
         } else {
           // To be safe, just push a bit the track exiting the GPU region to make sure
@@ -272,7 +271,7 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
 
       // Reset number of interaction left for the winner discrete process also in the currentTrack
       // (SampleInteraction() resets it for theTrack), will be resampled in the next iteration.
-      currentTrack.numIALeft[0] = -1.0;
+      theTrack->SetNumIALeft(-1, 0);
 
       // Perform the discrete interaction.
       G4HepEmRandomEngine rnge(&currentTrack.rngState);

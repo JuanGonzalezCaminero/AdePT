@@ -67,9 +67,10 @@ struct Track {
   unsigned short looperCounter{0};
   unsigned short zeroStepCounter{0};
 
+  bool hepEmTrackExists{false};
+
 #ifdef USE_SPLIT_KERNELS
   bool propagated{false};
-  bool hepEmTrackExists{false};
 
   // Variables used to store results from G4HepEM
   bool restrictedPhysicalStepLength{false};

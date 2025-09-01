@@ -46,7 +46,8 @@ namespace AsyncAdePT {
 // applying the continuous effects and maybe a discrete process that could
 // generate secondaries.
 template <bool IsElectron, typename Scoring>
-static __device__ __forceinline__ void TransportElectrons(Track *electrons, Track *leaks, const adept::MParray *active,
+static __device__ __forceinline__ void TransportElectrons(Track *electrons, G4HepEmElectronTrack *hepEMTracks,
+                                                          Track *leaks, const adept::MParray *active,
                                                           Secondaries &secondaries, adept::MParray *nextActiveQueue,
                                                           adept::MParray *leakedQueue, Scoring *userScoring,
                                                           Stats *InFlightStats,
@@ -163,9 +164,41 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     printErrors = !gTrackDebug.active || verbose;
 #endif
 
+    G4HepEmElectronTrack &elTrack = hepEMTracks[slot];
+    G4HepEmTrack *theTrack        = elTrack.GetTrack();
+    G4HepEmMSCTrackData *mscData  = elTrack.GetMSCTrackData();
+    if (!currentTrack.hepEmTrackExists) {
+      // Init a track with the needed data to call into G4HepEm.
+      elTrack.ReSet();
+      theTrack->SetEKin(currentTrack.eKin);
+      theTrack->SetMCIndex(auxData.fMCIndex);
+      theTrack->SetOnBoundary(currentTrack.navState.IsOnBoundary());
+      theTrack->SetCharge(Charge);
+      // the default is 1.0e21 but there are float vs double conversions, so we check for 1e20
+      mscData->fIsFirstStep         = currentTrack.initialRange > 1.0e+20;
+      mscData->fInitialRange        = currentTrack.initialRange;
+      mscData->fDynamicRangeFactor  = currentTrack.dynamicRangeFactor;
+      mscData->fTlimitMin           = currentTrack.tlimitMin;
+      currentTrack.hepEmTrackExists = true;
+    } else {
+      theTrack->SetEnergyDeposit(0);
+      mscData->fIsFirstStep = false;
+    }
+
+    RanluxppDouble newRNG(currentTrack.rngState.BranchNoAdvance());
+    G4HepEmRandomEngine rnge(&currentTrack.rngState);
+
+    // Sample the `number-of-interaction-left` and put it into the track.
+    for (int ip = 0; ip < 4; ++ip) {
+      if (theTrack->GetNumIALeft(ip) <= 0) {
+        theTrack->SetNumIALeft(-std::log(currentTrack.Uniform()), ip);
+      }
+    }
+
     auto survive = [&](LeakStatus leakReason = LeakStatus::NoLeak) {
-      isLastStep              = false; // track survived, do not force return of step
-      currentTrack.eKin       = eKin;
+      isLastStep        = false; // track survived, do not force return of step
+      currentTrack.eKin = eKin;
+      theTrack->SetEKin(currentTrack.eKin);
       currentTrack.pos        = pos;
       currentTrack.dir        = dir;
       currentTrack.globalTime = globalTime;
@@ -207,35 +240,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
       }
 #endif
     };
-
-    // Init a track with the needed data to call into G4HepEm.
-    G4HepEmElectronTrack elTrack;
-    G4HepEmTrack *theTrack = elTrack.GetTrack();
-    theTrack->SetEKin(eKin);
-    theTrack->SetMCIndex(auxData.fMCIndex);
-    theTrack->SetOnBoundary(navState.IsOnBoundary());
-    theTrack->SetCharge(Charge);
-    G4HepEmMSCTrackData *mscData = elTrack.GetMSCTrackData();
-    // the default is 1.0e21 but there are float vs double conversions, so we check for 1e20
-    mscData->fIsFirstStep        = currentTrack.initialRange > 1.0e+20;
-    mscData->fInitialRange       = currentTrack.initialRange;
-    mscData->fDynamicRangeFactor = currentTrack.dynamicRangeFactor;
-    mscData->fTlimitMin          = currentTrack.tlimitMin;
-
-    // Prepare a branched RNG state while threads are synchronized. Even if not
-    // used, this provides a fresh round of random numbers and reduces thread
-    // divergence because the RNG state doesn't need to be advanced later.
-    RanluxppDouble newRNG(currentTrack.rngState.BranchNoAdvance());
-    G4HepEmRandomEngine rnge(&currentTrack.rngState);
-
-    // Sample the `number-of-interaction-left` and put it into the track.
-    for (int ip = 0; ip < 4; ++ip) {
-      double numIALeft = currentTrack.numIALeft[ip];
-      if (numIALeft <= 0) {
-        numIALeft = -std::log(currentTrack.Uniform());
-      }
-      theTrack->SetNumIALeft(numIALeft, ip);
-    }
 
     G4HepEmElectronManager::HowFarToDiscreteInteraction(&g4HepEmData, &g4HepEmPars, &elTrack);
 
@@ -304,11 +308,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     __syncwarp(); // was found to be beneficial after divergent calls
 
     G4HepEmElectronManager::HowFarToMSC(&g4HepEmData, &g4HepEmPars, &elTrack, &rnge);
-
-    // Remember MSC values for the next step(s).
-    currentTrack.initialRange       = mscData->fInitialRange;
-    currentTrack.dynamicRangeFactor = mscData->fDynamicRangeFactor;
-    currentTrack.tlimitMin          = mscData->fTlimitMin;
 
     // Get result into variables.
     double geometricalStepLengthFromPhysics = theTrack->GetGStepLength();
@@ -486,12 +485,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
       }
     }
 
-    // Save the `number-of-interaction-left` in our track.
-    for (int ip = 0; ip < 4; ++ip) {
-      double numIALeft           = theTrack->GetNumIALeft(ip);
-      currentTrack.numIALeft[ip] = numIALeft;
-    }
-
     bool reached_interaction = true;
 
     const double theElCut    = g4HepEmData.fTheMatCutData->fMatCutData[auxData.fMCIndex].fSecElProdCutE;
@@ -525,6 +518,8 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
             if (verbose) printf("\n| track leaked to Geant4\n");
 #endif
             leakReason = LeakStatus::OutOfGPURegion;
+          } else {
+            theTrack->SetMCIndex(nextauxData.fMCIndex);
           }
 
           // the track survives, do not force return of step
@@ -557,7 +552,7 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     if (reached_interaction && !stopped) {
       // Reset number of interaction left for the winner discrete process.
       // (Will be resampled in the next iteration.)
-      currentTrack.numIALeft[winnerProcessIndex] = -1.0;
+      theTrack->SetNumIALeft(-1.0, winnerProcessIndex);
 
       // Check if a delta interaction happens instead of the real discrete process.
       if (G4HepEmElectronManager::CheckDelta(&g4HepEmData, theTrack, currentTrack.Uniform())) {
@@ -1026,26 +1021,26 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
 // Instantiate kernels for electrons and positrons.
 #ifdef ASYNC_MODE
 template <typename Scoring>
-__global__ void TransportElectrons(Track *electrons, Track *leaks, const adept::MParray *active,
-                                   Secondaries secondaries, adept::MParray *nextActiveQueue,
-                                   adept::MParray *leakedQueue, Scoring *userScoring, Stats *InFlightStats,
-                                   AllowFinishOffEventArray allowFinishOffEvent, const bool returnAllSteps,
-                                   const bool returnLastStep)
+__global__ void TransportElectrons(Track *electrons, G4HepEmElectronTrack *hepEMTracks, Track *leaks,
+                                   const adept::MParray *active, Secondaries secondaries,
+                                   adept::MParray *nextActiveQueue, adept::MParray *leakedQueue, Scoring *userScoring,
+                                   Stats *InFlightStats, AllowFinishOffEventArray allowFinishOffEvent,
+                                   const bool returnAllSteps, const bool returnLastStep)
 {
-  TransportElectrons</*IsElectron*/ true, Scoring>(electrons, leaks, active, secondaries, nextActiveQueue, leakedQueue,
-                                                   userScoring, InFlightStats, allowFinishOffEvent, returnAllSteps,
-                                                   returnLastStep);
+  TransportElectrons</*IsElectron*/ true, Scoring>(electrons, hepEMTracks, leaks, active, secondaries, nextActiveQueue,
+                                                   leakedQueue, userScoring, InFlightStats, allowFinishOffEvent,
+                                                   returnAllSteps, returnLastStep);
 }
 template <typename Scoring>
-__global__ void TransportPositrons(Track *positrons, Track *leaks, const adept::MParray *active,
-                                   Secondaries secondaries, adept::MParray *nextActiveQueue,
-                                   adept::MParray *leakedQueue, Scoring *userScoring, Stats *InFlightStats,
-                                   AllowFinishOffEventArray allowFinishOffEvent, const bool returnAllSteps,
-                                   const bool returnLastStep)
+__global__ void TransportPositrons(Track *positrons, G4HepEmElectronTrack *hepEMTracks, Track *leaks,
+                                   const adept::MParray *active, Secondaries secondaries,
+                                   adept::MParray *nextActiveQueue, adept::MParray *leakedQueue, Scoring *userScoring,
+                                   Stats *InFlightStats, AllowFinishOffEventArray allowFinishOffEvent,
+                                   const bool returnAllSteps, const bool returnLastStep)
 {
-  TransportElectrons</*IsElectron*/ false, Scoring>(positrons, leaks, active, secondaries, nextActiveQueue, leakedQueue,
-                                                    userScoring, InFlightStats, allowFinishOffEvent, returnAllSteps,
-                                                    returnLastStep);
+  TransportElectrons</*IsElectron*/ false, Scoring>(positrons, hepEMTracks, leaks, active, secondaries, nextActiveQueue,
+                                                    leakedQueue, userScoring, InFlightStats, allowFinishOffEvent,
+                                                    returnAllSteps, returnLastStep);
 }
 #else
 template <typename Scoring>

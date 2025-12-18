@@ -1255,7 +1255,10 @@ void TransportLoop(int trackCapacity, int leakCapacity, int scoringCapacity, int
             particleManager, gpuState.fScoring_dev, gpuState.stats_dev, steppingActionParams, allowFinishOffEvent,
             returnAllSteps, returnLastStep); //, gpuState.gammaInteractions);
 
-        TransportGammasWoodcock<PerEventScoring, SteppingAction><<<blocks, threads, 0, gammas.stream>>>(
+        const auto [threadsWDT, blocksWDT] =
+            computeThreadsAndBlocks(gpuState.stats->queueFillLevel[ParticleType::GammaWDT]);
+
+        TransportGammasWoodcock<PerEventScoring, SteppingAction><<<blocksWDT, threadsWDT, 0, gammas.stream>>>(
             particleManager, gpuState.fScoring_dev, gpuState.stats_dev, steppingActionParams, allowFinishOffEvent,
             returnAllSteps, returnLastStep);
 #endif

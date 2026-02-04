@@ -351,6 +351,8 @@ __global__ void FinishIteration(AllParticleQueues all, Stats *stats, TracksAndSl
       stats->slotFillLevelLeaks[i] = tracksAndSlots.slotManagersLeaks[i]->FillLevel();
     }
 
+    printf("DEBUG: In-flight: %d, Occupied: %d\n", particlesInFlight, occupiedSlots);
+
     // add gammas in Woodcock tracking. As the WDT gammas share the same slot manager as normal gammas, no other action
     // is needed
     particlesInFlight += all.queues[ParticleType::GammaWDT].nextActive->size();

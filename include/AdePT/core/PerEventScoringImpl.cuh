@@ -437,7 +437,7 @@ public:
     ADEPT_DEVICE_API_CALL(GetSymbolAddress(&fHitScoringBuffer_deviceAddress, gHitScoringBuffer_dev));
     assert(fHitScoringBuffer_deviceAddress != nullptr);
     ADEPT_DEVICE_API_CALL(Memcpy(fHitScoringBuffer_deviceAddress, &fBuffer.hitScoringInfo, sizeof(HitScoringBuffer),
-                                 cudaMemcpyHostToDevice));
+                                 ADEPT_DEVICE_API_SYMBOL(MemcpyHostToDevice)));
 
     // create cuda event needed to tell the transport that the swap of the device buffers is executed
     cudaEventCreateWithFlags(&fSwapDoneEvent, cudaEventDisableTiming);
@@ -693,8 +693,8 @@ void PerEventScoring::ClearGPU(cudaStream_t cudaStream)
 void PerEventScoring::CopyToHost(cudaStream_t cudaStream)
 {
   const auto oldPointer = fScoring_dev;
-  ADEPT_DEVICE_API_CALL(
-      MemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters), cudaMemcpyDeviceToHost, cudaStream));
+  ADEPT_DEVICE_API_CALL(MemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters),
+                                    ADEPT_DEVICE_API_SYMBOL(MemcpyDeviceToHost), cudaStream));
   ADEPT_DEVICE_API_CALL(StreamSynchronize(cudaStream));
   assert(oldPointer == fScoring_dev);
   (void)oldPointer;

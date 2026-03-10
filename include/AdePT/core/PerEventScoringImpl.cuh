@@ -480,8 +480,8 @@ public:
 
     ADEPT_DEVICE_API_CALL(MemcpyAsync(fHitScoringBuffer_deviceAddress, &fBuffer.hitScoringInfo[fActiveBuffer],
                                       sizeof(HitScoringBuffer), cudaMemcpyDefault, cudaStream));
-    COPCORE_CUDA_CHECK(
-        cudaEventRecord(fSwapDoneEvent, cudaStream)); // record event that the transport kernels must wait for
+    ADEPT_DEVICE_API_CALL(
+        EventRecord(fSwapDoneEvent, cudaStream)); // record event that the transport kernels must wait for
 
     // need to set the hostState to awaiting device, this prevents the next swap until the hits in the hostBuffer are
     // send to the HitQueue
@@ -693,8 +693,8 @@ void PerEventScoring::ClearGPU(cudaStream_t cudaStream)
 void PerEventScoring::CopyToHost(cudaStream_t cudaStream)
 {
   const auto oldPointer = fScoring_dev;
-  COPCORE_CUDA_CHECK(
-      cudaMemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters), cudaMemcpyDeviceToHost, cudaStream));
+  ADEPT_DEVICE_API_CALL(
+      MemcpyAsync(&fGlobalCounters, fScoring_dev, sizeof(GlobalCounters), cudaMemcpyDeviceToHost, cudaStream));
   ADEPT_DEVICE_API_CALL(StreamSynchronize(cudaStream));
   assert(oldPointer == fScoring_dev);
   (void)oldPointer;
